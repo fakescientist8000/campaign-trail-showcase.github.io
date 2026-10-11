@@ -788,7 +788,7 @@
     return side("left", 6.2) + side("right", 6.9);
   }
 
-  // small SVG textures, drawn once by the browser: film grain, dust, wood figure
+  // small SVG textures, drawn once by the browser: film grain, age stains, wood figure
   function svgUrl(w, h, body) {
     const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='" + w + "' height='" + h + "' viewBox='0 0 " + w + " " + h + "' preserveAspectRatio='none'>" + body + "</svg>";
     return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
@@ -797,24 +797,13 @@
   function textures() {
     const filter = (id, body) => "<filter id='" + id + "' x='0' y='0' width='1' height='1' color-interpolation-filters='sRGB'>" + body + "</filter>";
 
-    // fine film grain: most of it sits close to nothing, so it reads as the grain of a print, not speckle
+    // the faintest film grain, so it reads as the grain of a print, not speckle
     const grain = svgUrl(160, 160, filter("g",
       "<feTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2' seed='3' stitchTiles='stitch' result='n'/>" +
-      "<feColorMatrix in='n' result='d' values='0 0 0 0 .15  0 0 0 0 .08  0 0 0 0 .03  .8 0 0 0 -.46'/>" +
-      "<feColorMatrix in='n' result='l' values='0 0 0 0 1  0 0 0 0 .94  0 0 0 0 .82  -.8 0 0 0 .3'/>" +
+      "<feColorMatrix in='n' result='d' values='0 0 0 0 .15  0 0 0 0 .08  0 0 0 0 .03  .4 0 0 0 -.26'/>" +
+      "<feColorMatrix in='n' result='l' values='0 0 0 0 1  0 0 0 0 .94  0 0 0 0 .82  -.4 0 0 0 .14'/>" +
       "<feMerge><feMergeNode in='d'/><feMergeNode in='l'/></feMerge>") +
       "<rect width='160' height='160' filter='url(#g)'/>");
-
-    // a few dust specks, the same every time
-    let seed = 1948;
-    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    let specks = "";
-    for (let i = 0; i < 7; i++) {
-      const dark = i % 3 === 0;
-      specks += "<circle cx='" + (rand() * 400).toFixed(1) + "' cy='" + (rand() * 300).toFixed(1) + "' r='" + (0.35 + rand() * (dark ? 0.45 : 0.7)).toFixed(2) +
-        "' fill='" + (dark ? "#2a1405" : "#fff2d6") + "' opacity='" + (0.1 + rand() * 0.14).toFixed(2) + "'/>";
-    }
-    const dust = svgUrl(400, 300, specks);
 
     // two fine scratches and a hair on the old glass, well away from any lettering
     const scratches = svgUrl(222, 230,
@@ -822,22 +811,16 @@
       "<path d='M120 196c26-9 48-24 66-44' stroke='#f2e2c0' stroke-width='.4' fill='none' opacity='.16'/>" +
       "<path d='M58 150c5 12 2 22 9 31' stroke='#f2e2c0' stroke-width='.45' fill='none' opacity='.22'/>");
 
-    // foxing on old card: a faint tide-mark stain and a scatter of small brown spots
+    // age on old card: a faint tide-mark stain
     const foxing = svgUrl(240, 120, filter("f",
-      "<feTurbulence type='fractalNoise' baseFrequency='.03' stitchTiles='stitch' numOctaves='3' seed='7' result='a'/>" +
-      "<feColorMatrix in='a' result='s' values='0 0 0 0 .5  0 0 0 0 .32  0 0 0 0 .1  1.6 0 0 0 -.84'/>" +
-      "<feTurbulence type='fractalNoise' baseFrequency='.22' stitchTiles='stitch' numOctaves='2' seed='12' result='b'/>" +
-      "<feColorMatrix in='b' result='p' values='0 0 0 0 .45  0 0 0 0 .26  0 0 0 0 .08  3 0 0 0 -2.3'/>" +
-      "<feMerge><feMergeNode in='s'/><feMergeNode in='p'/></feMerge>") +
+      "<feTurbulence type='fractalNoise' baseFrequency='.03' stitchTiles='stitch' numOctaves='3' seed='7'/>" +
+      "<feColorMatrix values='0 0 0 0 .5  0 0 0 0 .32  0 0 0 0 .1  1.6 0 0 0 -.84'/>") +
       "<rect width='240' height='120' filter='url(#f)'/>");
 
-    // tarnish on the nickel and pot metal: dull blotches and pitting
+    // tarnish on the nickel and pot metal: dull blotches
     const tarnish = svgUrl(240, 160, filter("t",
-      "<feTurbulence type='fractalNoise' baseFrequency='.06 .1' stitchTiles='stitch' numOctaves='3' seed='21' result='a'/>" +
-      "<feColorMatrix in='a' result='s' values='0 0 0 0 .22  0 0 0 0 .18  0 0 0 0 .1  1.3 0 0 0 -.64'/>" +
-      "<feTurbulence type='fractalNoise' baseFrequency='.7' stitchTiles='stitch' numOctaves='1' seed='4' result='b'/>" +
-      "<feColorMatrix in='b' result='p' values='0 0 0 0 .16  0 0 0 0 .12  0 0 0 0 .06  1.8 0 0 0 -1.24'/>" +
-      "<feMerge><feMergeNode in='s'/><feMergeNode in='p'/></feMerge>") +
+      "<feTurbulence type='fractalNoise' baseFrequency='.06 .1' stitchTiles='stitch' numOctaves='3' seed='21'/>" +
+      "<feColorMatrix values='0 0 0 0 .22  0 0 0 0 .18  0 0 0 0 .1  1.3 0 0 0 -.64'/>") +
       "<rect width='240' height='160' filter='url(#t)'/>");
 
     // worn paint: a mask that is solid except where years of fingers have rubbed it away
@@ -853,7 +836,7 @@
       "<feColorMatrix values='0 0 0 0 .13  0 0 0 0 .06  0 0 0 0 .02  2.6 0 0 0 -1.12'/>") +
       "<rect width='600' height='280' filter='url(#w)'/>");
 
-    return { grain, dust, scratches, foxing, tarnish, wear, woodA: wood(11), woodB: wood(29) };
+    return { grain, scratches, foxing, tarnish, wear, woodA: wood(11), woodB: wood(29) };
   }
 
   function injectStyles() {
@@ -946,7 +929,7 @@
       pointer-events: none;
     }
 
-    /* the photograph: fine grain, a little dust and one soft vignette over the whole face.
+    /* the photograph: the faintest grain and one soft vignette over the whole face.
        Each part of the face carries its own piece of the same vignette: --jk48-vx/--jk48-vy say where
        the middle of the whole face sits, measured from that part's corner, so the pieces line up. */
     #player.jk48 .jk48-film {
@@ -960,18 +943,17 @@
       border-radius: inherit;
       pointer-events: none;
       background:
-        ${tex.dust} var(--jk48-dust, 0 0) / 400px 300px,
-        ${tex.grain} var(--jk48-dust, 0 0) / 160px 160px,
+        ${tex.grain} var(--jk48-grain-at, 0 0) / 160px 160px,
         radial-gradient(ellipse var(--jk48-vw) var(--jk48-vh) at var(--jk48-vx) var(--jk48-vy), transparent 46%, rgba(54, 26, 8, 0.14) 70%, rgba(42, 18, 4, 0.4) 100%);
     }
     #player.jk48 .jk48-crown .jk48-film {
       --jk48-vx: 152px;
       --jk48-vy: 165px;
-      --jk48-dust: -130px -40px;
+      --jk48-grain-at: -130px -40px;
     }
     #player.jk48 .jk48-wing-program .jk48-film {
       --jk48-vx: -142px;
-      --jk48-dust: -220px -120px;
+      --jk48-grain-at: -220px -120px;
     }
 
     /* the cabinet face: a crown in the middle, two wings either side */
@@ -1305,7 +1287,7 @@
       background: #5c1a12;
       box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
     }
-    /* old glass: a little haze, two fine scratches and the dust that settles at the bottom, no shine */
+    /* old glass: a little haze and two fine scratches, no shine */
     #player.jk48 .jk48-glass {
       position: absolute;
       inset: 0;
@@ -1313,7 +1295,6 @@
       pointer-events: none;
       background:
         ${tex.scratches} 0 0 / 100% 100% no-repeat,
-        ${tex.dust} -60px -20px / 400px 300px,
         radial-gradient(ellipse 95% 30% at 50% 100%, rgba(214, 186, 140, 0.16), transparent 75%),
         radial-gradient(ellipse 34% 22% at 30% 34%, rgba(214, 190, 150, 0.06), transparent 80%),
         radial-gradient(ellipse 26% 30% at 74% 66%, rgba(214, 190, 150, 0.05), transparent 80%);
