@@ -2,8 +2,9 @@
 // A late-1940s jukebox take on the music player used in the mod 1932 (and other mods).
 // It keeps the same API (Song, Playlist, changePlaylist, updateUI) and the same
 // YouTube support, but everything you see is drawn with CSS: a 78 r.p.m. record
-// spinning under a glass dome, a typed title strip, a program of selections,
-// Bakelite keys, a volume knob and bubble-tube pilasters. No image assets needed.
+// turning behind old glass under an arch of lit plastic with a bubble tube, typed
+// title strips, a program with selector buttons, a coin plate, Bakelite keys and a
+// volume knob, all with the grain and fade of a 1940s photograph. No image assets needed.
 //
 // To use it, paste this whole file into your mod's Code 2 and edit JUKEBOX_SONGS below.
 (function () {
@@ -530,6 +531,40 @@
     }
   }
 
+  // type a title the way a tired typewriter would: a few letters ride a hair high or low,
+  // a few strike lighter or heavier. The same title always comes out the same.
+  function typeInto(target, text, seed) {
+    let n = (seed * 7919 + 17) % 233280;
+    // whole characters, so accents and emoji stay in one piece
+    const chars = typeof Intl !== "undefined" && Intl.Segmenter
+      ? Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text), (part) => part.segment)
+      : Array.from(text);
+    // only the odd letters get their own span; the rest stay plain text
+    let plain = "";
+    for (const ch of chars) {
+      let look = "";
+      if (ch !== " ") {
+        n = (n * 9301 + 49297) % 233280;
+        const r = n / 233280;
+        if (r < 0.14) look = "jk48-hi";
+        else if (r > 0.9) look = "jk48-lo";
+        else if (r > 0.82) look = "jk48-faint";
+        else if (r > 0.76) look = "jk48-heavy";
+      }
+      if (!look) {
+        plain += ch;
+        continue;
+      }
+      if (plain) target.appendChild(document.createTextNode(plain));
+      plain = "";
+      const letter = document.createElement("span");
+      letter.className = look;
+      letter.textContent = ch;
+      target.appendChild(letter);
+    }
+    if (plain) target.appendChild(document.createTextNode(plain));
+  }
+
   function renderProgram(playlist) {
     const list = el("jk48-program");
     if (!list) return;
@@ -549,7 +584,7 @@
       words.className = "jk48-pick-words";
       const title = document.createElement("span");
       title.className = "jk48-pick-title";
-      title.textContent = textOf(song?.getTitle?.(), "Untitled");
+      typeInto(title, textOf(song?.getTitle?.(), "Untitled"), i);
       const artist = document.createElement("span");
       artist.className = "jk48-pick-artist";
       artist.textContent = textOf(song?.getArtist?.(), "");
@@ -735,20 +770,90 @@
     };
   }
 
-  function icon(name) {
-    const paths = {
-      prev: "M5 4h2.4v16H5zM20 4v16L8.6 12z",
-      play: "M7 4.5v15l12.5-7.5z",
-      pause: "M6 4.5h4.4v15H6zM13.6 4.5H18v15h-4.4z",
-      next: "M16.6 4H19v16h-2.4zM4 4l11.4 8L4 20z"
+  // bubbles for the tube that runs up both sides of the crown and over the arch:
+  // an uneven stream of big and little ones, never quite evenly spaced
+  function bubbles() {
+    let seed = 46;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const side = (name, period) => {
+      let html = "";
+      let at = 0;
+      for (let i = 0; i < 10; i++) {
+        at += period / 10 * (0.55 + rand() * 0.9);
+        const size = (3.4 + rand() * rand() * 4).toFixed(1);
+        html += '<i style="--jk48-b-delay:-' + (at % period).toFixed(2) + "s;--jk48-b-size:" + size + 'px"></i>';
+      }
+      return '<span class="jk48-bubbles jk48-bubbles-' + name + '" style="--jk48-b-time:' + period + 's">' + html + "</span>";
     };
-    return '<svg class="jk48-icon jk48-icon-' + name + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="' + paths[name] + '"/></svg>';
+    return side("left", 6.2) + side("right", 6.9);
   }
 
-  function bubbles() {
-    let html = "";
-    for (let i = 0; i < 6; i++) html += "<i></i>";
-    return html;
+  // small SVG textures, drawn once by the browser: film grain, dust, wood figure
+  function svgUrl(w, h, body) {
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='" + w + "' height='" + h + "' viewBox='0 0 " + w + " " + h + "' preserveAspectRatio='none'>" + body + "</svg>";
+    return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+  }
+
+  function textures() {
+    const filter = (id, body) => "<filter id='" + id + "' x='0' y='0' width='1' height='1' color-interpolation-filters='sRGB'>" + body + "</filter>";
+
+    // fine film grain: most of it sits close to nothing, so it reads as the grain of a print, not speckle
+    const grain = svgUrl(160, 160, filter("g",
+      "<feTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2' seed='3' stitchTiles='stitch' result='n'/>" +
+      "<feColorMatrix in='n' result='d' values='0 0 0 0 .15  0 0 0 0 .08  0 0 0 0 .03  1.15 0 0 0 -.6'/>" +
+      "<feColorMatrix in='n' result='l' values='0 0 0 0 1  0 0 0 0 .94  0 0 0 0 .82  -1.15 0 0 0 .44'/>" +
+      "<feMerge><feMergeNode in='d'/><feMergeNode in='l'/></feMerge>") +
+      "<rect width='160' height='160' filter='url(#g)'/>");
+
+    // a few dust specks, the same every time
+    let seed = 1948;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    let specks = "";
+    for (let i = 0; i < 18; i++) {
+      const dark = i % 3 === 0;
+      specks += "<circle cx='" + (rand() * 400).toFixed(1) + "' cy='" + (rand() * 300).toFixed(1) + "' r='" + (0.35 + rand() * (dark ? 0.45 : 0.7)).toFixed(2) +
+        "' fill='" + (dark ? "#2a1405" : "#fff2d6") + "' opacity='" + (0.16 + rand() * 0.24).toFixed(2) + "'/>";
+    }
+    const dust = svgUrl(400, 300, specks);
+
+    // two fine scratches and a hair on the old glass, well away from any lettering
+    const scratches = svgUrl(222, 230,
+      "<path d='M38 74c34-21 71-37 112-46' stroke='#f2e2c0' stroke-width='.5' fill='none' opacity='.2'/>" +
+      "<path d='M120 196c26-9 48-24 66-44' stroke='#f2e2c0' stroke-width='.4' fill='none' opacity='.16'/>" +
+      "<path d='M58 150c5 12 2 22 9 31' stroke='#f2e2c0' stroke-width='.45' fill='none' opacity='.22'/>");
+
+    // foxing on old card: a faint tide-mark stain and a scatter of small brown spots
+    const foxing = svgUrl(240, 120, filter("f",
+      "<feTurbulence type='fractalNoise' baseFrequency='.03' stitchTiles='stitch' numOctaves='3' seed='7' result='a'/>" +
+      "<feColorMatrix in='a' result='s' values='0 0 0 0 .5  0 0 0 0 .32  0 0 0 0 .1  1.6 0 0 0 -.84'/>" +
+      "<feTurbulence type='fractalNoise' baseFrequency='.22' stitchTiles='stitch' numOctaves='2' seed='12' result='b'/>" +
+      "<feColorMatrix in='b' result='p' values='0 0 0 0 .45  0 0 0 0 .26  0 0 0 0 .08  4 0 0 0 -2.72'/>" +
+      "<feMerge><feMergeNode in='s'/><feMergeNode in='p'/></feMerge>") +
+      "<rect width='240' height='120' filter='url(#f)'/>");
+
+    // tarnish on the nickel and pot metal: dull blotches and pitting
+    const tarnish = svgUrl(240, 160, filter("t",
+      "<feTurbulence type='fractalNoise' baseFrequency='.06 .1' stitchTiles='stitch' numOctaves='3' seed='21' result='a'/>" +
+      "<feColorMatrix in='a' result='s' values='0 0 0 0 .22  0 0 0 0 .18  0 0 0 0 .1  1.3 0 0 0 -.64'/>" +
+      "<feTurbulence type='fractalNoise' baseFrequency='.7' stitchTiles='stitch' numOctaves='1' seed='4' result='b'/>" +
+      "<feColorMatrix in='b' result='p' values='0 0 0 0 .16  0 0 0 0 .12  0 0 0 0 .06  2.4 0 0 0 -1.42'/>" +
+      "<feMerge><feMergeNode in='s'/><feMergeNode in='p'/></feMerge>") +
+      "<rect width='240' height='160' filter='url(#t)'/>");
+
+    // worn paint: a mask that is solid except where years of fingers have rubbed it away
+    const wear = svgUrl(90, 40, filter("r",
+      "<feTurbulence type='fractalNoise' baseFrequency='.55' stitchTiles='stitch' numOctaves='2' seed='5'/>" +
+      "<feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -9 0 0 0 6.1'/>" +
+      "<feComponentTransfer><feFuncA type='linear' slope='.5' intercept='.5'/></feComponentTransfer>") +
+      "<rect width='90' height='40' filter='url(#r)'/>");
+
+    // walnut figure: long streaks of darker grain
+    const wood = (s) => svgUrl(600, 280, filter("w",
+      "<feTurbulence type='fractalNoise' baseFrequency='.0035 .075' numOctaves='4' seed='" + s + "'/>" +
+      "<feColorMatrix values='0 0 0 0 .13  0 0 0 0 .06  0 0 0 0 .02  2.6 0 0 0 -1.12'/>") +
+      "<rect width='600' height='280' filter='url(#w)'/>");
+
+    return { grain, dust, scratches, foxing, tarnish, wear, woodA: wood(11), woodB: wood(29) };
   }
 
   function injectStyles() {
@@ -758,24 +863,28 @@
       const fonts = document.createElement("link");
       fonts.id = "jk48-fonts";
       fonts.rel = "stylesheet";
-      fonts.href = "https://fonts.googleapis.com/css2?family=Limelight&family=Special+Elite&display=swap";
+      fonts.href = "https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Oleo+Script:wght@700&family=Special+Elite&display=swap";
       document.head.appendChild(fonts);
     }
 
+    const tex = textures();
     const style = document.createElement("style");
     style.id = "jk48-styles";
     style.textContent = `
     #player.jk48 {
-      --jk48-chrome: linear-gradient(180deg, #fbfbfb 0%, #cfd2d6 18%, #8f949b 46%, #eceef0 56%, #a2a7ad 80%, #f3f4f5 100%);
-      --jk48-chrome-side: linear-gradient(90deg, #9da2a9 0%, #f4f5f6 30%, #c3c7cc 55%, #7f848b 100%);
-      --jk48-cream: #f5ecd6;
-      --jk48-ink: #231d17;
-      --jk48-red: #b11f2b;
-      --jk48-deep-red: #6d0f18;
-      --jk48-amber: #ffbf4d;
-      --jk48-walnut: #4a2410;
-      --jk48-deco: "Limelight", "Copperplate", "Copperplate Gothic Light", Georgia, serif;
+      --jk48-tarnish: ${tex.tarnish} 0 0 / 240px 160px;
+      --jk48-fox-img: ${tex.foxing};
+      --jk48-metal: var(--jk48-tarnish), linear-gradient(180deg, #aba693 0%, #a19b89 38%, #948f7d 66%, #86816f 100%);
+      --jk48-metal-side: var(--jk48-tarnish), linear-gradient(90deg, #787362 0%, #9c9684 38%, #928c7b 68%, #6c6758 100%);
+      --jk48-edge: #24140b;
+      --jk48-card: #ebdab0;
+      --jk48-ink: #2a1c12;
+      --jk48-red: #8a2a1c;
+      --jk48-oxblood: #5a1a10;
+      --jk48-gold: #f0d590;
+      --jk48-sign: "Alfa Slab One", "Rockwell Extra Bold", "Rockwell", Georgia, serif;
       --jk48-type: "Special Elite", "Courier New", Courier, monospace;
+      --jk48-script: "Oleo Script", "Brush Script MT", "Segoe Script", cursive;
       --jk48-progress: 0%;
       --jk48-arm-rest: ${ARM_REST}deg;
       --jk48-arm-play: ${ARM_START}deg;
@@ -791,6 +900,8 @@
       font-family: Georgia, "Times New Roman", serif;
       -webkit-user-select: none;
       user-select: none;
+      /* the whole face is printed like a 1940s colour photograph: warm, faded, a little soft */
+      filter: sepia(0.3) saturate(0.8);
     }
     #player.jk48 *, #player.jk48 *::before, #player.jk48 *::after {
       box-sizing: border-box;
@@ -815,123 +926,208 @@
     }
     #player.jk48 button:focus-visible,
     #player.jk48 [role="slider"]:focus-visible {
-      outline: 2px solid #ffd27a;
+      outline: 2px solid #ffe08f;
       outline-offset: 2px;
     }
+    /* on the mid-grey control plate a single colour can't stand out from both the plate and the keys,
+       so the ring there is two-tone: a cream halo hugging the control and a dark line outside it */
     #player.jk48 .jk48-controls :focus-visible {
-      outline-color: #2a1206;
+      outline: 3px solid #140802;
+      outline-offset: 2px;
     }
-
-    /* cabinet */
-    #player.jk48 .jk48-cabinet {
-      display: flex;
-      align-items: stretch;
-      gap: 10px;
-      padding: 10px;
-      border-radius: 22px 22px 12px 12px;
-      border: 3px solid #2a1206;
-      background:
-        repeating-linear-gradient(91deg, rgba(0, 0, 0, 0.09) 0 2px, transparent 2px 7px),
-        repeating-linear-gradient(87deg, rgba(255, 230, 200, 0.05) 0 1px, transparent 1px 13px),
-        radial-gradient(ellipse at 30% 20%, rgba(255, 190, 120, 0.18), transparent 60%),
-        linear-gradient(180deg, #6e3b1c 0%, #4a2410 55%, #351707 100%);
-      box-shadow:
-        inset 0 0 0 2px #b9bec4,
-        inset 0 0 0 4px #5a2c12,
-        inset 0 10px 24px rgba(0, 0, 0, 0.35),
-        0 6px 16px rgba(0, 0, 0, 0.35);
-    }
-    #player.jk48 .jk48-body {
-      flex: 1 1 auto;
-      min-width: 0;
-      display: grid;
-      grid-template-columns: 232px minmax(0, 1fr) 220px;
-      grid-template-areas: "dome center program";
-      gap: 12px;
-      align-items: stretch;
-    }
-
-    /* glowing plastic pilasters with bubble tubes */
-    #player.jk48 .jk48-pilaster {
-      position: relative;
-      flex: 0 0 40px;
-      border-radius: 20px 20px 6px 6px;
-      overflow: hidden;
-      background:
-        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0 2px, rgba(0, 0, 0, 0.12) 2px 5px, transparent 5px 8px),
-        linear-gradient(180deg, #ff5a2a 0%, #ffb52b 30%, #ffe07a 50%, #ffb52b 70%, #e8371f 100%);
-      box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.25), inset 0 0 14px rgba(120, 20, 0, 0.6), 0 0 0 2px #2a1206, 0 0 0 4px #b9bec4;
-      animation: jk48-glow 9s ease-in-out infinite alternate;
-    }
-    #player.jk48 .jk48-pilaster::before,
-    #player.jk48 .jk48-pilaster::after {
+    #player.jk48 .jk48-controls .jk48-key:focus-visible::after,
+    #player.jk48 .jk48-controls .jk48-small:focus-visible::after,
+    #player.jk48 .jk48-controls .jk48-knob:focus-visible::after {
       content: "";
       position: absolute;
-      left: 0;
-      right: 0;
-      height: 14px;
-      background: var(--jk48-chrome);
-      z-index: 2;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow: 0 0 0 2px #f6e7bd;
+      pointer-events: none;
     }
-    #player.jk48 .jk48-pilaster::before { top: 0; border-radius: 20px 20px 0 0; }
-    #player.jk48 .jk48-pilaster::after { bottom: 0; }
-    #player.jk48 .jk48-tube {
-      position: absolute;
-      top: 18px;
-      bottom: 18px;
-      left: 50%;
-      width: 12px;
-      margin-left: -6px;
-      border-radius: 6px;
-      overflow: hidden;
-      background:
-        linear-gradient(90deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.05) 40%, rgba(0, 0, 0, 0.18)),
-        linear-gradient(180deg, #ff9a3c, #ff3d2e);
-      box-shadow: 0 0 0 1px rgba(90, 20, 0, 0.5), 0 0 8px rgba(255, 210, 120, 0.8);
-    }
-    #player.jk48 .jk48-right .jk48-tube {
-      background:
-        linear-gradient(90deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.05) 40%, rgba(0, 0, 0, 0.18)),
-        linear-gradient(180deg, #8ee07a, #2f9e4a);
-    }
-    #player.jk48 .jk48-tube i {
-      position: absolute;
-      left: 50%;
-      top: 100%;
-      width: 5px;
-      height: 5px;
-      margin-left: -2.5px;
-      border-radius: 50%;
-      background: radial-gradient(circle at 35% 35%, #fff, rgba(255, 255, 255, 0.35) 60%, transparent 70%);
-      animation: jk48-bubble 3.4s linear infinite;
-    }
-    #player.jk48 .jk48-tube i:nth-child(2) { animation-delay: -0.6s; width: 4px; height: 4px; }
-    #player.jk48 .jk48-tube i:nth-child(3) { animation-delay: -1.3s; }
-    #player.jk48 .jk48-tube i:nth-child(4) { animation-delay: -1.9s; width: 6px; height: 6px; margin-left: -3px; }
-    #player.jk48 .jk48-tube i:nth-child(5) { animation-delay: -2.5s; width: 4px; height: 4px; }
-    #player.jk48 .jk48-tube i:nth-child(6) { animation-delay: -3s; }
-    #player.jk48 .jk48-right .jk48-tube i { animation-duration: 3.9s; }
 
-    /* the glass dome over the record changer */
-    #player.jk48 .jk48-dome {
-      grid-area: dome;
+    /* the photograph: fine grain, a little dust and one soft vignette over the whole face.
+       Each part of the face carries its own piece of the same vignette: --jk48-vx/--jk48-vy say where
+       the middle of the whole face sits, measured from that part's corner, so the pieces line up. */
+    #player.jk48 .jk48-film {
+      --jk48-vx: 50cqw;
+      --jk48-vy: 123px;
+      --jk48-vw: 60cqw;
+      --jk48-vh: 250px;
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      border-radius: inherit;
+      pointer-events: none;
+      background:
+        ${tex.dust} var(--jk48-dust, 0 0) / 400px 300px,
+        ${tex.grain} var(--jk48-dust, 0 0) / 160px 160px,
+        radial-gradient(ellipse var(--jk48-vw) var(--jk48-vh) at var(--jk48-vx) var(--jk48-vy), transparent 46%, rgba(54, 26, 8, 0.14) 70%, rgba(42, 18, 4, 0.4) 100%);
+    }
+    #player.jk48 .jk48-crown .jk48-film {
+      --jk48-vx: 152px;
+      --jk48-vy: 165px;
+      --jk48-dust: -130px -40px;
+    }
+    #player.jk48 .jk48-wing-program .jk48-film {
+      --jk48-vx: -142px;
+      --jk48-dust: -220px -120px;
+    }
+
+    /* the cabinet face: a crown in the middle, two wings either side */
+    #player.jk48 .jk48-cabinet {
       position: relative;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    /* the crown: an arch of lit, fluted plastic with a bubble tube running round it */
+    #player.jk48 .jk48-crown {
+      position: relative;
+      z-index: 2;
+      isolation: isolate;
+      flex: 0 0 304px;
+      width: 304px;
+      height: 318px;
+      overflow: hidden;
+      border-radius: 152px 152px 12px 12px;
+      background:
+        radial-gradient(ellipse 30px 110px at 18px 250px, rgba(255, 232, 160, 0.8), transparent),
+        radial-gradient(ellipse 30px 110px at 286px 250px, rgba(255, 232, 160, 0.8), transparent),
+        radial-gradient(ellipse 120px 44px at 152px 12px, rgba(255, 236, 170, 0.7), transparent),
+        radial-gradient(circle at 152px 152px, transparent 118px, rgba(255, 226, 150, 0.5) 132px, transparent 150px),
+        conic-gradient(from 0deg at 152px 152px, #f6cb64, #efa140 52deg, #dc6a32 96deg, #c24a2b 180deg, #dc6a32 264deg, #efa140 308deg, #f6cb64);
+      box-shadow: 0 0 0 2px var(--jk48-edge), 0 6px 14px rgba(24, 10, 2, 0.4);
+    }
+    /* the colour wheel behind the plastic turns slowly, so the arch drifts from red-gold to green-gold */
+    #player.jk48 .jk48-crown::before,
+    #player.jk48 .jk48-crown::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+    }
+    #player.jk48 .jk48-crown::before {
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 30px 110px at 18px 250px, rgba(255, 240, 170, 0.7), transparent),
+        radial-gradient(ellipse 30px 110px at 286px 250px, rgba(255, 240, 170, 0.7), transparent),
+        radial-gradient(circle at 152px 152px, transparent 118px, rgba(255, 236, 160, 0.45) 132px, transparent 150px),
+        conic-gradient(from 0deg at 152px 152px, #ead36e, #b7c25e 58deg, #7fa85a 100deg, #e09a3e 180deg, #7fa85a 260deg, #b7c25e 302deg, #ead36e);
+      opacity: 0;
+      animation: jk48-cycle 11s ease-in-out infinite alternate;
+    }
+    /* fluting: ribs fan out round the arch and run straight down the sides */
+    #player.jk48 .jk48-crown::after {
+      z-index: 1;
+      background:
+        repeating-conic-gradient(from 0deg at 152px 152px, rgba(110, 36, 6, 0.26) 0deg 1.2deg, rgba(255, 240, 200, 0.12) 1.2deg 2.2deg, transparent 2.2deg 5.6deg) 0 0 / 100% 152px no-repeat,
+        repeating-linear-gradient(180deg, rgba(110, 36, 6, 0.26) 0 1.5px, rgba(255, 240, 200, 0.12) 1.5px 2.6px, transparent 2.6px 7.4px) 0 152px / 100% 100% no-repeat;
+      box-shadow: inset 0 0 0 4px #6c6757, inset 0 0 0 5px rgba(30, 16, 6, 0.85), inset 0 0 12px 4px rgba(90, 30, 0, 0.35);
+    }
+    #player.jk48 .jk48-crown .jk48-shade {
+      z-index: 2;
+      border-radius: inherit;
+    }
+    #player.jk48 .jk48-tube,
+    #player.jk48 .jk48-tube-wall {
+      position: absolute;
+      left: 13px;
+      top: 13px;
+      width: 278px;
+      height: 330px;
+      border: 10px solid transparent;
+      border-bottom: 0;
+      border-radius: 139px 139px 0 0 / 139px 139px 0 0;
+      pointer-events: none;
+    }
+    /* the liquid in the tube, masked to the tube itself */
+    #player.jk48 .jk48-tube {
+      z-index: 3;
+      background:
+        radial-gradient(circle at 50% 139px, rgba(60, 8, 0, 0.45) 129px, transparent 132px 136px, rgba(60, 8, 0, 0.45) 139px) 0 0 / 100% 139px no-repeat border-box,
+        linear-gradient(90deg, rgba(60, 8, 0, 0.45), transparent 3px 7px, rgba(60, 8, 0, 0.45) 10px, transparent 10px calc(100% - 10px), rgba(60, 8, 0, 0.45) calc(100% - 10px), transparent calc(100% - 7px) calc(100% - 3px), rgba(60, 8, 0, 0.45)) 0 139px / 100% 100% no-repeat border-box,
+        conic-gradient(from 0deg at 50% 139px, #e65e30, #cc3f24 70deg, #a52a1a 180deg, #cc3f24 290deg, #e65e30) border-box;
+      -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+      opacity: 0.92;
+    }
+    #player.jk48 .jk48-tube-wall {
+      z-index: 5;
+      box-shadow: 0 0 0 1.5px rgba(60, 16, 2, 0.75), 0 0 0 3px rgba(255, 236, 190, 0.18), inset 0 0 0 1.5px rgba(60, 16, 2, 0.75);
+    }
+    #player.jk48 .jk48-bubbles {
+      position: absolute;
+      left: 152px;
+      top: 152px;
+      width: 0;
+      height: 0;
+      z-index: 4;
+    }
+    #player.jk48 .jk48-bubbles-right {
+      transform: scaleX(-1);
+    }
+    /* an air bubble in coloured liquid: a clear body, a thin bright skin, a darker shadow edge */
+    #player.jk48 .jk48-bubbles i {
+      --jk48-b-size: 5px;
+      position: absolute;
+      left: calc(var(--jk48-b-size) / -2);
+      top: calc(var(--jk48-b-size) / -2);
+      width: var(--jk48-b-size);
+      height: var(--jk48-b-size);
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 206, 150, 0.22) 0 48%, rgba(246, 214, 168, 0.55) 60% 70%, rgba(90, 20, 4, 0.45) 78%, transparent 84%);
+      transform: rotate(-90deg) translateY(-134px) translateX(-170px);
+      animation: jk48-bubble var(--jk48-b-time, 6.2s) linear infinite;
+      animation-delay: var(--jk48-b-delay, 0s);
+    }
+    #player.jk48 .jk48-keystone {
+      position: absolute;
+      left: 134px;
+      top: 3px;
+      z-index: 7;
+      width: 36px;
+      height: 27px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 5px 5px 18px 18px / 5px 5px 15px 15px;
+      background: var(--jk48-metal);
+      box-shadow: 0 0 0 1.5px var(--jk48-edge), 0 2px 3px rgba(20, 8, 0, 0.45), inset 0 -3px 4px rgba(50, 30, 10, 0.35);
+      color: var(--jk48-oxblood);
+      font-size: 14px;
+      line-height: 1;
+      padding-bottom: 3px;
+    }
+
+    /* the mechanism window: old glass over the record changer */
+    #player.jk48 .jk48-dome {
+      position: absolute;
+      left: 36px;
+      top: 36px;
+      z-index: 6;
       width: 232px;
       height: 240px;
       padding: 5px;
-      border-radius: 116px 116px 14px 14px;
-      background: var(--jk48-chrome-side);
-      box-shadow: 0 0 0 2px #2a1206, 0 4px 10px rgba(0, 0, 0, 0.5);
+      border-radius: 116px 116px 10px 10px;
+      background: var(--jk48-metal-side);
+      box-shadow: 0 0 0 3px var(--jk48-edge), 0 0 0 4px rgba(120, 60, 20, 0.6);
     }
     #player.jk48 .jk48-dome-inner {
       position: relative;
       width: 222px;
       height: 230px;
-      border-radius: 111px 111px 10px 10px;
+      border-radius: 111px 111px 7px 7px;
       overflow: hidden;
       background:
-        radial-gradient(ellipse 70% 40% at 50% 0%, rgba(255, 214, 140, 0.55), transparent 70%),
-        radial-gradient(circle at 50% 58%, #4a1118 0%, #2a070c 55%, #160305 100%);
+        radial-gradient(ellipse 80% 40% at 50% 0%, rgba(255, 206, 128, 0.55), transparent 74%),
+        radial-gradient(ellipse 60% 30% at 50% 100%, rgba(255, 170, 90, 0.16), transparent 80%),
+        repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.14) 0 2px, transparent 2px 5px),
+        radial-gradient(circle at 50% 56%, #6a2818 0%, #3e140c 55%, #210906 100%);
       box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.85);
     }
     #player.jk48 .jk48-platter {
@@ -941,7 +1137,7 @@
       width: 192px;
       height: 192px;
       border-radius: 50%;
-      background: radial-gradient(circle, #555 0 60%, #c8ccd1 61%, #f5f6f7 66%, #8b9097 72%, #3a3d41 100%);
+      background: radial-gradient(circle, #3e3833 0 60%, #7d776b 61%, #948e80 66%, #6f695e 72%, #34302b 100%);
       box-shadow: 0 6px 14px rgba(0, 0, 0, 0.7);
     }
     #player.jk48 .jk48-slot {
@@ -956,9 +1152,10 @@
       inset: 0;
       border-radius: 50%;
       background:
-        radial-gradient(circle, transparent 0 89px, #262626 89px 91px, #0b0b0b 91px),
-        radial-gradient(circle, transparent 0 46px, rgba(255, 255, 255, 0.05) 46px 47px, #151515 47px 49px, transparent 49px),
-        repeating-radial-gradient(circle, #111 0 1px, #1c1c1c 1px 2px, #0d0d0d 2px 3px);
+        radial-gradient(circle, transparent 0 89px, #2a2420 89px 91px, #0e0b09 91px),
+        radial-gradient(circle, transparent 0 46px, #1c1714 46px 49px, transparent 49px),
+        radial-gradient(circle, transparent 0 84px, rgba(70, 58, 48, 0.25) 84px 85px, transparent 85px),
+        repeating-radial-gradient(circle, #15110e 0 1px, #1d1814 1px 2px, #110d0b 2px 3px);
       box-shadow: 0 0 0 1px #000, 0 4px 10px rgba(0, 0, 0, 0.6);
       animation: jk48-spin var(--jk48-turn) linear infinite;
       animation-play-state: paused;
@@ -977,9 +1174,9 @@
       margin: -36px 0 0 -36px;
       border-radius: 50%;
       overflow: hidden;
-      background: radial-gradient(circle, rgba(255, 255, 255, 0.08), transparent 70%), var(--jk48-label-bg);
-      box-shadow: inset 0 0 0 3px var(--jk48-label-bg), inset 0 0 0 4px #e3c77e, 0 0 0 1px #000;
-      color: #ecd38c;
+      background: var(--jk48-label-bg);
+      box-shadow: inset 0 0 0 3px var(--jk48-label-bg), inset 0 0 0 4px #c4a25e, inset 0 0 10px rgba(0, 0, 0, 0.35), 0 0 0 1px #000;
+      color: #e3c987;
     }
     #player.jk48 .jk48-label-print {
       position: absolute;
@@ -1043,18 +1240,6 @@
     #player.jk48 .jk48-label.has-cover .jk48-label-print {
       display: none;
     }
-    #player.jk48 .jk48-sheen {
-      position: absolute;
-      left: 18px;
-      top: 35px;
-      width: 186px;
-      height: 186px;
-      border-radius: 50%;
-      pointer-events: none;
-      background: conic-gradient(from 200deg, transparent 0deg, rgba(255, 255, 255, 0.14) 22deg, transparent 50deg, transparent 180deg, rgba(255, 236, 210, 0.1) 202deg, transparent 232deg);
-      -webkit-mask: radial-gradient(circle, transparent 0 37px, #000 38px 92px, transparent 93px);
-      mask: radial-gradient(circle, transparent 0 37px, #000 38px 92px, transparent 93px);
-    }
     #player.jk48 .jk48-spindle {
       position: absolute;
       left: 107px;
@@ -1062,8 +1247,8 @@
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: radial-gradient(circle at 35% 35%, #fff, #a9adb3 55%, #4b4f55);
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+      background: #8a8476;
+      box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(0, 0, 0, 0.8);
     }
     #player.jk48 .jk48-arm {
       position: absolute;
@@ -1085,7 +1270,7 @@
       width: 8px;
       height: 112px;
       border-radius: 4px;
-      background: linear-gradient(90deg, #7d8289, #f6f7f8 45%, #aeb3b9 70%, #6f747b);
+      background: linear-gradient(90deg, #5f5a4f, #9c968a 45%, #858073 70%, #57524a);
     }
     #player.jk48 .jk48-arm-head {
       position: absolute;
@@ -1094,8 +1279,8 @@
       width: 16px;
       height: 24px;
       border-radius: 3px 3px 6px 6px;
-      background: linear-gradient(90deg, #2b2b2b, #5a5a5a 45%, #1f1f1f);
-      box-shadow: inset 0 3px 0 #c9cdd2;
+      background: linear-gradient(90deg, #241f1b, #3e3731 45%, #1d1916);
+      box-shadow: inset 0 3px 0 #7d776b;
       transform: rotate(14deg);
       transform-origin: 50% 0;
     }
@@ -1106,8 +1291,8 @@
       width: 28px;
       height: 28px;
       border-radius: 50%;
-      background: radial-gradient(circle at 40% 35%, #fff, #c3c7cc 40%, #6d7279 75%, #3a3d41);
-      box-shadow: 0 0 0 2px #2a1206;
+      background: radial-gradient(circle, #8f897b 0 50%, #77715f 64%, #575244 100%);
+      box-shadow: 0 0 0 2px var(--jk48-edge), inset 0 -2px 3px rgba(0, 0, 0, 0.35);
     }
     #player.jk48 .jk48-arm-base::after {
       content: "";
@@ -1117,96 +1302,244 @@
       width: 10px;
       height: 10px;
       border-radius: 50%;
-      background: radial-gradient(circle at 40% 35%, #8a1a22, #3d070c);
+      background: #5c1a12;
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
     }
+    /* old glass: a little haze, two fine scratches and the dust that settles at the bottom, no shine */
     #player.jk48 .jk48-glass {
       position: absolute;
       inset: 0;
       border-radius: inherit;
       pointer-events: none;
       background:
-        linear-gradient(118deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.06) 22%, transparent 34%, transparent 64%, rgba(255, 255, 255, 0.08) 74%, transparent 84%),
-        radial-gradient(ellipse 60% 30% at 40% 6%, rgba(255, 255, 255, 0.25), transparent 70%);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+        ${tex.scratches} 0 0 / 100% 100% no-repeat,
+        ${tex.dust} -60px -20px / 400px 300px,
+        radial-gradient(ellipse 95% 30% at 50% 100%, rgba(214, 186, 140, 0.16), transparent 75%),
+        radial-gradient(ellipse 34% 22% at 30% 34%, rgba(214, 190, 150, 0.06), transparent 80%),
+        radial-gradient(ellipse 26% 30% at 74% 66%, rgba(214, 190, 150, 0.05), transparent 80%);
+      box-shadow: inset 0 0 0 1px rgba(30, 14, 4, 0.6), inset 0 0 14px rgba(30, 14, 4, 0.5);
     }
     #player.jk48.is-swapping .jk48-slot {
       animation: jk48-swap 0.6s ease-in-out;
     }
+    #player.jk48 .jk48-nameplate {
+      position: absolute;
+      left: 34px;
+      right: 34px;
+      top: 281px;
+      height: 31px;
+      z-index: 6;
+      padding: 3px;
+      border-radius: 4px 4px 9px 9px;
+      background: var(--jk48-metal);
+      box-shadow: 0 0 0 1.5px var(--jk48-edge), 0 2px 4px rgba(20, 8, 0, 0.4);
+    }
+    #player.jk48 .jk48-nameplate span {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      border-radius: 2px 2px 7px 7px;
+      background: radial-gradient(ellipse 70% 120% at 50% 40%, #5e2216, #3c140c);
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+      font-family: var(--jk48-script);
+      font-weight: 700;
+      font-size: 15px;
+      line-height: 1;
+      color: #ecd7a2;
+      text-shadow: 0.6px 0.6px 0 rgba(20, 6, 0, 0.6);
+      white-space: nowrap;
+      transform: rotate(-0.6deg);
+    }
 
-    /* centre: marquee, title strip, dial and keys */
-    #player.jk48 .jk48-center {
-      grid-area: center;
+    /* the wings: walnut panels edged with a band of lit plastic */
+    #player.jk48 .jk48-wing {
+      position: relative;
+      z-index: 1;
+      isolation: isolate;
+      flex: 1 1 0;
+      min-width: 0;
+      height: 276px;
+      display: flex;
+      padding: 10px 0 0 10px;
+      border-radius: 48px 8px 8px 12px;
+      background:
+        repeating-conic-gradient(from 0deg at 100% 100%, rgba(110, 36, 6, 0.28) 0deg 2deg, transparent 2deg 8deg) 0 0 / 48px 48px no-repeat,
+        repeating-linear-gradient(90deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 48px 0 / 100% 10px no-repeat,
+        repeating-linear-gradient(180deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 0 48px / 10px 100% no-repeat,
+        radial-gradient(ellipse 30px 120px at 0 70%, rgba(255, 236, 168, 0.75), transparent),
+        radial-gradient(ellipse 120px 26px at 30% 0, rgba(255, 236, 168, 0.6), transparent),
+        linear-gradient(180deg, #f2c35e, #e58d3a 45%, #c24e2c);
+      box-shadow: 0 0 0 2px var(--jk48-edge), 0 6px 14px rgba(24, 10, 2, 0.35), inset 0 0 0 1px rgba(30, 14, 4, 0.5);
+    }
+    #player.jk48 .jk48-wing-info {
+      margin-right: -10px;
+    }
+    #player.jk48 .jk48-wing-program {
+      margin-left: -10px;
+      padding: 10px 10px 0 0;
+      border-radius: 8px 48px 12px 8px;
+      background:
+        repeating-conic-gradient(from 0deg at 0 100%, rgba(110, 36, 6, 0.28) 0deg 2deg, transparent 2deg 8deg) 100% 0 / 48px 48px no-repeat,
+        repeating-linear-gradient(90deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 0 0 / calc(100% - 48px) 10px no-repeat,
+        repeating-linear-gradient(180deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 100% 48px / 10px 100% no-repeat,
+        radial-gradient(ellipse 30px 120px at 100% 70%, rgba(255, 236, 168, 0.75), transparent),
+        radial-gradient(ellipse 120px 26px at 70% 0, rgba(255, 236, 168, 0.6), transparent),
+        linear-gradient(180deg, #f2c35e, #e58d3a 45%, #c24e2c);
+    }
+    #player.jk48 .jk48-wing::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      background: linear-gradient(180deg, rgba(196, 186, 92, 0.85), rgba(110, 150, 82, 0.8) 50%, rgba(190, 120, 52, 0.8));
+      opacity: 0;
+      animation: jk48-cycle 11s ease-in-out infinite alternate;
+    }
+    #player.jk48 .jk48-wing .jk48-shade {
+      z-index: 1;
+      border-radius: inherit;
+    }
+    #player.jk48 .jk48-panel {
+      position: relative;
+      z-index: 2;
+      flex: 1 1 auto;
       min-width: 0;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
+      padding: 10px 20px 9px 10px;
+      border-radius: 38px 6px 6px 10px;
+      background:
+        ${tex.woodA} 0 0 / 100% 100%,
+        repeating-linear-gradient(178.6deg, rgba(20, 8, 2, 0.12) 0 1px, transparent 1px 6px, rgba(255, 210, 160, 0.04) 6px 7px, transparent 7px 13px),
+        radial-gradient(ellipse 60% 40% at 35% 30%, rgba(170, 96, 46, 0.35), transparent 70%),
+        linear-gradient(180deg, #75432a 0%, #5f361d 55%, #4a2812 100%);
+      box-shadow: 0 0 0 2px var(--jk48-edge), inset 0 0 16px rgba(20, 8, 0, 0.55);
     }
+    #player.jk48 .jk48-wing-program .jk48-panel {
+      padding: 8px 10px 9px 20px;
+      border-radius: 6px 38px 10px 6px;
+      background:
+        ${tex.woodB} 0 0 / 100% 100%,
+        repeating-linear-gradient(181.2deg, rgba(20, 8, 2, 0.12) 0 1px, transparent 1px 7px, rgba(255, 210, 160, 0.04) 7px 8px, transparent 8px 12px),
+        radial-gradient(ellipse 60% 40% at 65% 30%, rgba(170, 96, 46, 0.35), transparent 70%),
+        linear-gradient(180deg, #75432a 0%, #5f361d 55%, #4a2812 100%);
+    }
+
+    /* the lit sign at the top of the left wing, lettered by hand in script with pinstripes either side */
     #player.jk48 .jk48-marquee {
       position: relative;
       flex: 0 0 auto;
       padding: 3px;
-      border-radius: 8px;
-      background: var(--jk48-chrome);
-      box-shadow: 0 0 0 2px #2a1206;
+      border-radius: 28px 6px 6px 6px;
+      background: var(--jk48-metal);
+      box-shadow: 0 0 0 1.5px var(--jk48-edge), 0 2px 4px rgba(20, 8, 0, 0.4);
     }
     #player.jk48 .jk48-marquee-glass {
+      --jk48-paint: #3a0d05;
+      position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
-      height: 26px;
-      border-radius: 5px;
-      background:
-        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.12) 0 1px, transparent 1px 6px),
-        radial-gradient(ellipse at center, #fff0b8 0%, #ffc95a 55%, #d27a0c 100%);
-      box-shadow: inset 0 0 8px rgba(120, 50, 0, 0.6);
-      font-family: var(--jk48-deco);
-      font-size: 15px;
-      letter-spacing: 0.2em;
-      color: var(--jk48-deep-red);
-      text-shadow: 0 0 6px rgba(255, 236, 180, 0.9);
-      white-space: nowrap;
+      gap: 9px;
+      height: 28px;
+      padding-left: 10px;
       overflow: hidden;
-      transition: filter 0.4s ease;
+      border-radius: 25px 4px 4px 4px;
+      background:
+        radial-gradient(ellipse 46% 160% at 50% 60%, rgba(255, 236, 178, 0.9), transparent 74%),
+        linear-gradient(180deg, #ebbd66, #dc9a44 60%, #c27a34);
+      box-shadow: inset 0 0 10px rgba(90, 34, 0, 0.55);
+      white-space: nowrap;
     }
-    #player.jk48 .jk48-star {
-      font-size: 11px;
-      color: var(--jk48-red);
+    #player.jk48 .jk48-marquee-glass > span {
+      position: relative;
+      z-index: 1;
     }
-    #player.jk48:not(.is-playing) .jk48-marquee-glass {
-      filter: brightness(0.82) saturate(0.85);
+    #player.jk48 #jk48-status {
+      display: inline-block;
+      padding: 0 2px;
+      font-family: var(--jk48-script);
+      font-weight: 700;
+      font-size: 19px;
+      line-height: 28px;
+      letter-spacing: 0.01em;
+      text-transform: lowercase;
+      color: var(--jk48-paint);
+      /* a sign painter's thin cream shade under the letters */
+      text-shadow: 0.9px 0.9px 0 rgba(255, 238, 196, 0.5);
+      transform: rotate(-1.5deg) translateY(-1px);
+    }
+    #player.jk48 #jk48-status::first-letter {
+      text-transform: uppercase;
+    }
+    #player.jk48 .jk48-swash {
+      flex: 0 1 52px;
+      min-width: 14px;
+      height: 7px;
+      background:
+        radial-gradient(circle at 2.5px 3.5px, var(--jk48-paint) 0 1.6px, transparent 2.1px) 0 0 / 6px 7px no-repeat,
+        linear-gradient(90deg, transparent 6px, var(--jk48-paint) 40%) 0 2px / 100% 1.6px no-repeat,
+        linear-gradient(90deg, transparent 30%, var(--jk48-paint) 85%) 0 5px / 100% 1px no-repeat;
+      opacity: 0.85;
+      transform: rotate(-1.5deg);
+    }
+    #player.jk48 .jk48-swash-r {
+      transform: rotate(-1.5deg) scaleX(-1);
+    }
+    #player.jk48 .jk48-marquee-glass::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 140% at 50% 55%, rgba(60, 22, 0, 0.1), rgba(60, 22, 0, 0.3));
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    #player.jk48:not(.is-playing) .jk48-marquee-glass::after {
+      opacity: 1;
     }
     #player.jk48.is-error .jk48-marquee-glass {
-      color: #fff3d6;
+      --jk48-paint: #f6e7c4;
       background:
-        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 6px),
-        radial-gradient(ellipse at center, #b3141f 0%, #7d0d16 70%, #4a050b 100%);
-      text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
-      filter: none;
+        radial-gradient(ellipse 50% 150% at 50% 70%, rgba(176, 58, 40, 0.8), transparent 72%),
+        linear-gradient(180deg, #8a2216, #6c160d 60%, #4c0c06);
     }
+    #player.jk48.is-error #jk48-status {
+      text-shadow: 0.9px 0.9px 0 rgba(20, 4, 0, 0.6);
+    }
+    #player.jk48.is-error .jk48-marquee-glass::after {
+      opacity: 0;
+    }
+
+    /* the title strip, typed on a card and slid into its holder a touch crooked */
     #player.jk48 .jk48-strip {
       position: relative;
       flex: 0 0 auto;
       padding: 4px;
-      border-radius: 6px;
-      background: var(--jk48-chrome);
-      box-shadow: 0 0 0 2px #2a1206, 0 3px 8px rgba(0, 0, 0, 0.4);
+      border-radius: 5px;
+      background:
+        radial-gradient(circle at 6px 50%, #4f4a3d 0 1.6px, #77715f 2px, transparent 2.6px),
+        radial-gradient(circle at calc(100% - 6px) 50%, #4f4a3d 0 1.6px, #77715f 2px, transparent 2.6px),
+        var(--jk48-metal);
+      box-shadow: 0 0 0 1.5px var(--jk48-edge), 0 3px 6px rgba(20, 8, 0, 0.4);
     }
     #player.jk48 .jk48-strip-card {
       position: relative;
       overflow: hidden;
-      border-radius: 2px;
+      margin: 0 6px;
+      border-radius: 2px 4px 3px 5px;
+      transform: rotate(-0.4deg);
       background:
-        repeating-linear-gradient(0deg, rgba(120, 90, 40, 0.035) 0 1px, transparent 1px 3px),
-        linear-gradient(180deg, #fbf5e6, var(--jk48-cream));
-      box-shadow: inset 0 0 0 1px #cbb68b;
-    }
-    #player.jk48 .jk48-strip-card::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      background: linear-gradient(160deg, rgba(255, 255, 255, 0.35), transparent 35%);
+        radial-gradient(circle at 0 0, rgba(130, 84, 28, 0.3), transparent 20px),
+        radial-gradient(circle at 100% 100%, rgba(130, 84, 28, 0.26), transparent 24px),
+        radial-gradient(circle at 100% 0, rgba(130, 84, 28, 0.16), transparent 14px),
+        radial-gradient(ellipse 60% 80% at 40% 30%, rgba(255, 244, 214, 0.3), transparent 70%),
+        var(--jk48-fox-img) -70px -10px / 240px 120px,
+        linear-gradient(180deg, #efdfb7, #e5d1a1);
+      box-shadow: inset 0 0 0 1px rgba(150, 112, 58, 0.55), inset 0 0 12px rgba(150, 108, 48, 0.25);
     }
     #player.jk48 .jk48-strip-top {
       display: flex;
@@ -1227,27 +1560,31 @@
       line-height: 21px;
       text-align: center;
       color: var(--jk48-ink);
+      text-shadow: 0.35px 0.25px 0 rgba(42, 28, 18, 0.5);
       overflow-wrap: anywhere;
+      transform: translateY(0.5px) rotate(0.25deg);
     }
     #player.jk48 .jk48-strip-band {
-      min-height: 22px;
+      min-height: 21px;
       padding: 0 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(180deg, #c42a35, var(--jk48-red) 50%, #8f1520);
-      box-shadow: inset 0 1px 0 #5e0b12, inset 0 -1px 0 #5e0b12;
+      background:
+        linear-gradient(180deg, rgba(60, 10, 4, 0.35), transparent 2px, transparent calc(100% - 2px), rgba(60, 10, 4, 0.35)),
+        var(--jk48-red);
     }
     #player.jk48 #artist {
       margin: 0;
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
-      font-family: var(--jk48-deco);
+      font-family: var(--jk48-sign);
       font-size: 13px;
       letter-spacing: 0.12em;
       text-transform: uppercase;
-      color: #fbf0d4;
+      color: #f6e8c6;
+      text-shadow: 0.6px 0.4px 0 rgba(30, 4, 0, 0.45);
     }
     #player.jk48 .jk48-strip-foot {
       display: flex;
@@ -1257,7 +1594,8 @@
       padding: 2px 8px 0;
       font-family: var(--jk48-type);
       font-size: 11px;
-      color: #6b5636;
+      color: #1c1208;
+      text-shadow: 0.3px 0.2px 0 rgba(28, 18, 8, 0.5);
       white-space: nowrap;
     }
     #player.jk48 #jk48-next {
@@ -1265,29 +1603,48 @@
       text-overflow: ellipsis;
       min-width: 0;
     }
+
+    /* the dial, with the time on two little drum counters */
     #player.jk48 .jk48-dial-row {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
       flex: 0 0 auto;
     }
+    /* ivory number drums turning behind a little window in the metal */
     #player.jk48 .jk48-time {
-      flex: 0 0 40px;
+      flex: 0 0 auto;
+      min-width: 44px;
+      height: 21px;
+      padding: 1px 4px 0 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 2px;
+      background:
+        linear-gradient(180deg, rgba(52, 32, 12, 0.55), rgba(52, 32, 12, 0.05) 26%, transparent 40% 60%, rgba(52, 32, 12, 0.05) 74%, rgba(52, 32, 12, 0.5)),
+        linear-gradient(180deg, transparent calc(50% - 0.5px), rgba(90, 60, 24, 0.22) calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px)),
+        var(--jk48-fox-img) -40px -20px / 240px 120px,
+        linear-gradient(180deg, #e6d6ad, #efe2c0 50%, #e2d0a4);
+      box-shadow: 0 0 0 2px #6e6958, 0 0 0 3px var(--jk48-edge), inset 0 1px 2px rgba(0, 0, 0, 0.6), inset 0 -1px 1px rgba(0, 0, 0, 0.3);
       font-family: var(--jk48-type);
-      font-size: 12px;
-      color: #f4e3bd;
-      text-shadow: 0 1px 1px #000;
-      text-align: center;
+      font-size: 12.5px;
+      line-height: 1;
+      letter-spacing: 1.5px;
+      color: #120a04;
+      text-shadow: 0.3px 0.2px 0 rgba(18, 10, 4, 0.5);
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
     #player.jk48 .jk48-dial {
       position: relative;
       flex: 1 1 auto;
-      height: 24px;
+      min-width: 0;
+      height: 30px;
       padding: 3px;
       border-radius: 5px;
-      background: var(--jk48-chrome);
-      box-shadow: 0 0 0 2px #2a1206;
+      background: var(--jk48-metal);
+      box-shadow: 0 0 0 1.5px var(--jk48-edge), 0 2px 4px rgba(20, 8, 0, 0.35);
       cursor: pointer;
       touch-action: pan-y;
     }
@@ -1297,18 +1654,42 @@
       border-radius: 3px;
       overflow: hidden;
       background:
-        repeating-linear-gradient(90deg, #6b4a1e 0 1px, transparent 1px 10%) bottom / 100% 9px no-repeat,
-        repeating-linear-gradient(90deg, rgba(107, 74, 30, 0.7) 0 1px, transparent 1px 2.5%) bottom / 100% 5px no-repeat,
-        linear-gradient(180deg, #fff6d8, #f3d58e);
-      box-shadow: inset 0 0 6px rgba(140, 80, 0, 0.45);
+        repeating-linear-gradient(90deg, #5d3f17 0 1px, transparent 1px 10%) 0 100% / 100% 8px no-repeat,
+        repeating-linear-gradient(90deg, rgba(93, 63, 23, 0.7) 0 1px, transparent 1px 2.5%) 0 100% / 100% 4px no-repeat,
+        radial-gradient(ellipse 60% 140% at 50% 100%, rgba(255, 238, 190, 0.5), transparent 70%),
+        linear-gradient(180deg, #ecd9a6, #dfc184);
+      box-shadow: inset 0 0 8px rgba(120, 70, 10, 0.5);
     }
+    #player.jk48 .jk48-dial-nums {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 1px;
+      height: 10px;
+      font-family: var(--jk48-sign);
+      font-size: 8px;
+      line-height: 10px;
+      color: #4a3010;
+    }
+    #player.jk48 .jk48-dial-nums i {
+      position: absolute;
+      top: 0;
+      width: 16px;
+      margin-left: -8px;
+      font-style: normal;
+      text-align: center;
+    }
+    #player.jk48 .jk48-dial-nums i:nth-child(1) { left: 20%; }
+    #player.jk48 .jk48-dial-nums i:nth-child(2) { left: 40%; }
+    #player.jk48 .jk48-dial-nums i:nth-child(3) { left: 60%; }
+    #player.jk48 .jk48-dial-nums i:nth-child(4) { left: 80%; }
     #player.jk48 .jk48-dial-fill {
       position: absolute;
       left: 0;
       top: 0;
       bottom: 0;
       width: var(--jk48-progress);
-      background: linear-gradient(180deg, rgba(255, 170, 60, 0.35), rgba(255, 120, 30, 0.25));
+      background: linear-gradient(90deg, rgba(214, 120, 34, 0.08), rgba(214, 120, 34, 0.32));
     }
     #player.jk48 .jk48-needle {
       position: absolute;
@@ -1318,39 +1699,69 @@
       width: 3px;
       margin-left: -1.5px;
       border-radius: 1px;
-      background: #c0161f;
-      box-shadow: 0 0 4px rgba(192, 22, 31, 0.7);
+      background: #8e1d12;
+      box-shadow: 1px 0 1px rgba(60, 20, 0, 0.4);
     }
+
+    /* the control plate: Bakelite keys and a volume knob */
     #player.jk48 .jk48-controls {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px;
       flex: 1 1 auto;
-      min-height: 62px;
-      padding: 6px 12px;
-      border-radius: 10px;
-      background: var(--jk48-chrome);
-      box-shadow: 0 0 0 2px #2a1206, inset 0 2px 0 rgba(255, 255, 255, 0.7);
+      min-height: 60px;
+      padding: 6px 10px 6px 12px;
+      border-radius: 6px;
+      background:
+        radial-gradient(circle at 6px 7px, #514b3e 0 1.6px, #6f6958 2px, transparent 2.6px),
+        radial-gradient(circle at 6px calc(100% - 7px), #514b3e 0 1.6px, #6f6958 2px, transparent 2.6px),
+        radial-gradient(circle at calc(100% - 6px) 7px, #514b3e 0 1.6px, #6f6958 2px, transparent 2.6px),
+        radial-gradient(circle at calc(100% - 6px) calc(100% - 7px), #514b3e 0 1.6px, #6f6958 2px, transparent 2.6px),
+        var(--jk48-tarnish),
+        linear-gradient(180deg, #c3bea9 0%, #b9b39e 45%, #aca690 100%);
+      box-shadow: 0 0 0 1.5px var(--jk48-edge), 0 3px 6px rgba(20, 8, 0, 0.35), inset 0 -2px 0 rgba(40, 24, 8, 0.2);
     }
     #player.jk48 .jk48-volume {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
     }
     #player.jk48 .jk48-volume-stack {
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 4px;
+      gap: 3px;
+    }
+    /* the scale painted on the plate round the knob, 0 to 10 */
+    #player.jk48 .jk48-knob-scale {
+      position: absolute;
+      left: 50%;
+      top: -5px;
+      width: 46px;
+      height: 46px;
+      margin-left: -23px;
+      border-radius: 50%;
+      background: repeating-conic-gradient(from -136.2deg, rgba(40, 22, 8, 0.85) 0 2.4deg, transparent 2.4deg 27deg);
+      -webkit-mask: radial-gradient(circle, transparent 0 19.5px, #000 20px 23px, transparent 23.5px), conic-gradient(from 137.5deg, transparent 0 85deg, #000 85deg);
+      -webkit-mask-composite: source-in;
+      mask: radial-gradient(circle, transparent 0 19.5px, #000 20px 23px, transparent 23.5px), conic-gradient(from 137.5deg, transparent 0 85deg, #000 85deg);
+      mask-composite: intersect;
+      pointer-events: none;
+    }
+    #player.jk48 .jk48-volume-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
     }
     #player.jk48 .jk48-knob {
       position: relative;
-      width: 38px;
-      height: 38px;
+      width: 36px;
+      height: 36px;
       border-radius: 50%;
-      background: repeating-conic-gradient(#2f0c05 0 7deg, #6a2410 7deg 14deg);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6), 0 0 0 1px #1a0702;
+      background: repeating-conic-gradient(#2e1208 0 7deg, #5a2614 7deg 14deg);
+      box-shadow: 0 2px 3px rgba(0, 0, 0, 0.55), 0 0 0 1px #1a0702;
       cursor: ns-resize;
       touch-action: none;
     }
@@ -1359,8 +1770,8 @@
       position: absolute;
       inset: 4px;
       border-radius: 50%;
-      background: radial-gradient(circle at 35% 30%, #b0583a, #6b1c0d 55%, #2c0a03);
-      box-shadow: inset 0 1px 1px rgba(255, 200, 170, 0.5);
+      background: radial-gradient(circle, #6a2a16 0 45%, #55200f 70%, #3b1508);
+      box-shadow: inset 0 -2px 3px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(20, 6, 0, 0.6);
     }
     #player.jk48 .jk48-knob-pointer {
       position: absolute;
@@ -1373,110 +1784,148 @@
       content: "";
       position: absolute;
       left: 50%;
-      top: 3px;
+      top: 2px;
       width: 3px;
-      height: 11px;
+      height: 10px;
       margin-left: -1.5px;
-      border-radius: 2px;
-      background: #f3e2b8;
+      border-radius: 1px 2px 1px 2px;
+      background: #e8d6a8;
     }
     #player.jk48 .jk48-small {
-      width: 22px;
-      height: 22px;
+      position: relative;
+      width: 24px;
+      height: 24px;
       border-radius: 50%;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: radial-gradient(circle at 40% 35%, #fffaf0, #e8dbbb 60%, #b9a57a);
-      box-shadow: 0 2px 0 #6b5532, 0 3px 4px rgba(0, 0, 0, 0.4);
-      font-family: var(--jk48-deco);
-      font-size: 15px;
+      padding-bottom: 1px;
+      background:
+        radial-gradient(ellipse 60% 50% at 50% 70%, rgba(120, 85, 30, 0.2), transparent 70%),
+        var(--jk48-fox-img) -90px -40px / 240px 120px,
+        radial-gradient(circle, #e8d6a4 0 52%, #d8c086 74%, #bea067);
+      border: 1px solid #6e5530;
+      box-shadow: 0 2px 0 #5b4424, 0 3px 4px rgba(0, 0, 0, 0.35);
+      font-family: var(--jk48-sign);
+      font-size: 17px;
       line-height: 1;
-      color: var(--jk48-deep-red);
+      color: #4a0f07;
       transition: transform 0.08s ease, box-shadow 0.08s ease;
     }
     #player.jk48 .jk48-keys {
       display: flex;
-      gap: 8px;
+      gap: 7px;
     }
     #player.jk48 .jk48-key {
-      width: 62px;
-      height: 46px;
+      position: relative;
+      width: 58px;
+      height: 44px;
       display: inline-flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 3px;
-      border-radius: 4px 4px 9px 9px;
-      background: linear-gradient(180deg, #fffaf0 0%, #f1e5c8 65%, #d8c69c 100%);
-      border: 1px solid #8a7550;
-      box-shadow: 0 4px 0 #6b5532, 0 6px 8px rgba(0, 0, 0, 0.45), inset 0 1px 0 #fff;
-      color: var(--jk48-deep-red);
+      padding: 0 2px 2px;
+      border-radius: 5px 5px 9px 9px;
+      background:
+        radial-gradient(ellipse 55% 45% at 50% 78%, rgba(118, 84, 30, 0.24), transparent 72%),
+        radial-gradient(circle at 12% 18%, rgba(118, 84, 30, 0.16), transparent 9px),
+        var(--jk48-fox-img) var(--jk48-fox, 0 0) / 240px 120px,
+        linear-gradient(180deg, #e8d6a5 0%, #dcc58d 60%, #c9ad72 100%);
+      border: 1px solid #6a512c;
+      box-shadow: 0 4px 0 #57401f, 0 6px 7px rgba(0, 0, 0, 0.4), inset 0 -2px 0 rgba(110, 78, 32, 0.32);
+      color: #4c1007;
+      transform: rotate(var(--jk48-tilt, 0deg));
       transition: transform 0.08s ease, box-shadow 0.08s ease;
     }
+    #player.jk48 #prevButton { --jk48-tilt: -0.5deg; --jk48-fox: -40px -10px; --jk48-wear: 0 0; }
+    #player.jk48 #nextButton { --jk48-tilt: 0.4deg; --jk48-fox: -150px -60px; --jk48-wear: -46px -14px; }
     #player.jk48 .jk48-key-play {
-      width: 70px;
-      background: linear-gradient(180deg, #e0525a 0%, var(--jk48-red) 60%, #85131d 100%);
-      border-color: #4d0910;
-      box-shadow: 0 4px 0 #4d0910, 0 6px 8px rgba(0, 0, 0, 0.45), inset 0 1px 0 #f59a9f;
-      color: #fff3d6;
+      --jk48-wear: -20px -22px;
+      width: 62px;
+      padding-top: 7px;
+      background:
+        radial-gradient(ellipse 55% 45% at 50% 78%, rgba(30, 6, 0, 0.3), transparent 72%),
+        radial-gradient(ellipse 40% 34% at 50% 58%, rgba(255, 210, 160, 0.07), transparent 80%),
+        linear-gradient(180deg, #8a2d1d 0%, #722015 60%, #591609 100%);
+      border-color: #330b04;
+      box-shadow: 0 4px 0 #3a0d05, 0 6px 7px rgba(0, 0, 0, 0.4), inset 0 -2px 0 rgba(30, 6, 0, 0.35);
+      color: #f2e1b8;
     }
-    #player.jk48 .jk48-icon {
-      width: 18px;
-      height: 18px;
-      fill: currentColor;
+    /* while it plays the key stays latched down and its pilot jewel glows */
+    #player.jk48 .jk48-key-play.is-on {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 #3a0d05, 0 3px 4px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(20, 4, 0, 0.45);
     }
-    #player.jk48 .jk48-key-play .jk48-icon-pause,
-    #player.jk48 .jk48-key-play.is-on .jk48-icon-play {
-      display: none;
+    #player.jk48 .jk48-key-play::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 5px;
+      width: 8px;
+      height: 8px;
+      margin-left: -4px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 55%, #6e3418, #3a1608 75%);
+      box-shadow: 0 0 0 1.5px #2a0a03, 0 1px 0 rgba(255, 210, 160, 0.12);
+      transition: background 0.3s ease, box-shadow 0.3s ease;
     }
-    #player.jk48 .jk48-key-play.is-on .jk48-icon-pause {
-      display: block;
+    #player.jk48 .jk48-key-play.is-on::before {
+      background: radial-gradient(circle at 50% 50%, #ffe3a0, #f3a646 55%, #b9621e);
+      box-shadow: 0 0 0 1.5px #2a0a03, 0 0 6px 2px rgba(255, 170, 70, 0.65);
     }
     #player.jk48 .jk48-caption {
-      font-family: var(--jk48-deco);
-      font-size: 9px;
-      letter-spacing: 0.12em;
+      display: inline-block;
+      font-family: var(--jk48-sign);
+      font-size: 10px;
+      letter-spacing: 0.06em;
       line-height: 1;
     }
+    /* the paint on the keys is rubbed thin where fingers have pressed them for years */
+    #player.jk48 .jk48-key .jk48-caption {
+      padding: 1px 0;
+      -webkit-mask: ${tex.wear} var(--jk48-wear, 0 0) / 90px 40px;
+      mask: ${tex.wear} var(--jk48-wear, 0 0) / 90px 40px;
+    }
+    /* a little enamel tag riveted under the knob */
     #player.jk48 .jk48-volume .jk48-caption {
-      color: var(--jk48-deep-red);
+      padding: 2px 4px 1px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, #e2d4ad, #d3c399);
+      box-shadow: inset 0 0 0 1px rgba(70, 46, 18, 0.55), 0 1px 0 rgba(30, 16, 4, 0.35);
+      font-size: 8px;
+      letter-spacing: 0.05em;
+      color: #2a1408;
+      text-shadow: none;
     }
     #player.jk48 .jk48-key:active,
     #player.jk48 .jk48-key.is-pressed {
-      transform: translateY(3px);
-      box-shadow: 0 1px 0 #6b5532, 0 2px 3px rgba(0, 0, 0, 0.45), inset 0 1px 0 #fff;
+      transform: translateY(3px) rotate(var(--jk48-tilt, 0deg));
+      box-shadow: 0 1px 0 #57401f, 0 2px 3px rgba(0, 0, 0, 0.45), inset 0 -2px 0 rgba(110, 78, 32, 0.32);
     }
     #player.jk48 .jk48-key-play:active,
     #player.jk48 .jk48-key-play.is-pressed {
-      box-shadow: 0 1px 0 #4d0910, 0 2px 3px rgba(0, 0, 0, 0.45), inset 0 1px 0 #f59a9f;
+      box-shadow: 0 1px 0 #3a0d05, 0 2px 3px rgba(0, 0, 0, 0.45), inset 0 2px 4px rgba(20, 4, 0, 0.45);
     }
     #player.jk48 .jk48-small:active,
     #player.jk48 .jk48-small.is-pressed {
       transform: translateY(2px);
-      box-shadow: 0 0 0 #6b5532, 0 1px 2px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 0 0 #5b4424, 0 1px 2px rgba(0, 0, 0, 0.4);
     }
 
-    /* program of selections */
+    /* the program: typed title strips, each with its numbered selector button */
     #player.jk48 .jk48-program {
-      grid-area: program;
       min-width: 0;
-      display: flex;
-      flex-direction: column;
-      padding: 4px;
-      border-radius: 8px;
-      background: var(--jk48-chrome);
-      box-shadow: 0 0 0 2px #2a1206;
     }
     #player.jk48 .jk48-program-head {
       flex: 0 0 auto;
-      padding: 3px 0 4px;
+      margin: 0;
       text-align: center;
-      font-family: var(--jk48-deco);
-      font-size: 13px;
-      letter-spacing: 0.25em;
-      color: var(--jk48-deep-red);
-      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+      font-family: var(--jk48-script);
+      font-weight: 700;
+      font-size: 17px;
+      line-height: 20px;
+      color: var(--jk48-gold);
+      text-shadow: 0.8px 0.8px 0 rgba(20, 6, 0, 0.8), 0 0 4px rgba(20, 6, 0, 0.5);
+      transform: rotate(-1deg);
     }
     #player.jk48 .jk48-program-list {
       flex: 1 1 auto;
@@ -1485,48 +1934,68 @@
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 5px;
-      padding: 6px;
-      border-radius: 5px;
-      background: linear-gradient(180deg, #2a0f06, #3d1a0b);
-      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8);
+      gap: 4px;
+      padding: 5px 6px;
+      border-radius: 4px;
+      background:
+        repeating-linear-gradient(180deg, transparent 0 33px, rgba(0, 0, 0, 0.25) 33px 34px),
+        linear-gradient(180deg, #2a170c, #3a2112);
+      box-shadow: 0 0 0 3px #8a8574, 0 0 0 4.5px var(--jk48-edge), inset 0 2px 6px rgba(0, 0, 0, 0.8);
       scrollbar-width: thin;
-      scrollbar-color: #b9a57a #2a0f06;
+      scrollbar-color: #b9a57a #2a170c;
     }
     #player.jk48 .jk48-pick {
       display: flex;
-      align-items: stretch;
+      align-items: center;
+      gap: 6px;
       width: 100%;
-      min-height: 34px;
-      border-radius: 2px;
-      overflow: hidden;
+      min-height: 30px;
       text-align: left;
-      background:
-        repeating-linear-gradient(0deg, rgba(120, 90, 40, 0.035) 0 1px, transparent 1px 3px),
-        var(--jk48-cream);
-      box-shadow: inset 0 0 0 1px #cbb68b;
-      transition: background-color 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
-    }
-    #player.jk48 .jk48-pick:hover {
-      filter: brightness(1.05);
     }
     #player.jk48 .jk48-pick-no {
-      flex: 0 0 26px;
+      flex: 0 0 24px;
+      height: 24px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(180deg, #c42a35, var(--jk48-red) 50%, #8f1520);
-      font-family: var(--jk48-deco);
-      font-size: 13px;
-      color: #fbf0d4;
+      border-radius: 50%;
+      background:
+        radial-gradient(ellipse 60% 50% at 50% 70%, rgba(120, 85, 30, 0.22), transparent 70%),
+        radial-gradient(circle, #e6d3a0 0 52%, #d5bc81 74%, #bb9d63);
+      box-shadow: 0 0 0 1px #3a2510, 0 2px 0 #2a1808, 0 3px 3px rgba(0, 0, 0, 0.45);
+      font-family: var(--jk48-sign);
+      font-size: 12px;
+      line-height: 1;
+      color: #5e170d;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
     }
+    /* each title strip: the song typed on yellowed card, the artist printed on a coloured band */
     #player.jk48 .jk48-pick-words {
+      --jk48-band: #7a2418;
       flex: 1 1 auto;
       min-width: 0;
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      padding: 2px 7px;
+      justify-content: space-between;
+      min-height: 29px;
+      overflow: hidden;
+      border-radius: 2px 3px 2px 4px;
+      background:
+        radial-gradient(circle at 0 100%, rgba(130, 84, 28, 0.26), transparent 12px),
+        radial-gradient(circle at 100% 0, rgba(130, 84, 28, 0.2), transparent 10px),
+        var(--jk48-fox-img) var(--jk48-fox, 0 0) / 240px 120px,
+        linear-gradient(180deg, #eddcb2, #e2cd9c);
+      box-shadow: inset 0 0 0 1px rgba(150, 112, 58, 0.5), 0 1px 1px rgba(0, 0, 0, 0.35);
+      transition: box-shadow 0.2s ease;
+    }
+    /* no two strips were typed, or slid into the rack, quite the same */
+    #player.jk48 .jk48-program-list li:nth-child(5n + 1) .jk48-pick-words { transform: rotate(0.35deg); }
+    #player.jk48 .jk48-program-list li:nth-child(5n + 2) .jk48-pick-words { transform: rotate(-0.3deg) translateX(1px); --jk48-band: #2f4a30; --jk48-fox: -60px -30px; }
+    #player.jk48 .jk48-program-list li:nth-child(5n + 3) .jk48-pick-words { transform: rotate(0.2deg) translateX(-1px); --jk48-band: #2b3652; --jk48-fox: -130px -70px; }
+    #player.jk48 .jk48-program-list li:nth-child(5n + 4) .jk48-pick-words { transform: rotate(-0.15deg); --jk48-band: #4c2339; --jk48-fox: -30px -84px; }
+    #player.jk48 .jk48-program-list li:nth-child(5n) .jk48-pick-words { transform: rotate(0.4deg) translateX(-0.5px); --jk48-band: #5a3318; --jk48-fox: -170px -10px; }
+    #player.jk48 .jk48-pick:hover .jk48-pick-words {
+      box-shadow: inset 0 0 0 1px rgba(150, 112, 58, 0.8), 0 0 6px rgba(255, 200, 120, 0.4);
     }
     #player.jk48 .jk48-pick-title,
     #player.jk48 .jk48-pick-artist {
@@ -1534,28 +2003,106 @@
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
+      text-align: center;
     }
     #player.jk48 .jk48-pick-title {
+      padding: 2px 7px 1px;
       font-family: var(--jk48-type);
       font-size: 12px;
+      line-height: 14px;
       color: var(--jk48-ink);
+      text-shadow: 0.3px 0.2px 0 rgba(42, 28, 18, 0.45);
     }
+    /* a worn ribbon and a tired typebar: some letters ride a hair high or low, some strike lighter */
+    #player.jk48 .jk48-pick-title .jk48-hi { position: relative; top: -0.7px; }
+    #player.jk48 .jk48-pick-title .jk48-lo { position: relative; top: 0.6px; }
+    #player.jk48 .jk48-pick-title .jk48-faint { color: #4a3826; }
+    #player.jk48 .jk48-pick-title .jk48-heavy { text-shadow: 0.5px 0.3px 0 rgba(42, 28, 18, 0.7); }
     #player.jk48 .jk48-pick-artist {
-      font-family: var(--jk48-deco);
-      font-size: 8.5px;
+      padding: 1px 7px 0;
+      background:
+        linear-gradient(180deg, rgba(0, 0, 0, 0.28), transparent 1.5px, transparent calc(100% - 1px), rgba(0, 0, 0, 0.22)),
+        var(--jk48-band);
+      font-family: var(--jk48-sign);
+      font-size: 9px;
+      line-height: 11px;
       letter-spacing: 0.1em;
       text-transform: uppercase;
-      color: #8a1c1c;
+      color: #f1e3bf;
     }
-    #player.jk48 .jk48-pick.is-current {
+    /* the chosen record's strip is lit from behind and its button stays pressed in */
+    #player.jk48 .jk48-pick.is-current .jk48-pick-words {
       background:
-        repeating-linear-gradient(0deg, rgba(120, 60, 0, 0.04) 0 1px, transparent 1px 3px),
-        radial-gradient(ellipse at 50% 50%, #fff2c2, #ffcf6b);
-      box-shadow: inset 0 0 0 1px #d18a1c, 0 0 9px rgba(255, 196, 90, 0.85);
+        radial-gradient(circle at 0 100%, rgba(130, 70, 10, 0.25), transparent 12px),
+        var(--jk48-fox-img) var(--jk48-fox, 0 0) / 240px 120px,
+        radial-gradient(ellipse 72% 130% at 50% 30%, #fff0c0, #f6cf7c 60%, #eab052);
+      box-shadow: inset 0 0 0 1px #b8761e, 0 0 10px 2px rgba(255, 180, 70, 0.75);
+    }
+    #player.jk48 .jk48-pick.is-current .jk48-pick-artist {
+      background:
+        linear-gradient(180deg, rgba(0, 0, 0, 0.22), transparent 1.5px, transparent calc(100% - 1px), rgba(0, 0, 0, 0.18)),
+        linear-gradient(rgba(255, 190, 110, 0.16), rgba(255, 190, 110, 0.16)),
+        var(--jk48-band);
     }
     #player.jk48 .jk48-pick.is-current .jk48-pick-no {
-      background: linear-gradient(180deg, #ffd36a, #f0a22a);
-      color: var(--jk48-deep-red);
+      transform: translateY(1.5px);
+      background: radial-gradient(circle, #f8d888 0 50%, #e8aa48 80%, #c98426);
+      box-shadow: 0 0 0 1px #3a2510, 0 0.5px 0 #2a1808, 0 0 8px rgba(255, 180, 70, 0.75);
+    }
+
+    /* the coin entry plate */
+    #player.jk48 .jk48-coin {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 36px;
+      margin-top: 3px;
+      padding: 3px 12px;
+      border-radius: 5px 5px 9px 9px;
+      background:
+        radial-gradient(circle at 6px 50%, #514b3e 0 1.6px, #6f6958 2px, transparent 2.6px),
+        radial-gradient(circle at calc(100% - 6px) 50%, #514b3e 0 1.6px, #6f6958 2px, transparent 2.6px),
+        linear-gradient(180deg, #c0baa5, #b1ab96 50%, #a39d89);
+      box-shadow: 0 0 0 1.5px var(--jk48-edge), 0 3px 5px rgba(20, 8, 0, 0.35), inset 0 -2px 0 rgba(40, 24, 8, 0.22);
+      color: #110701;
+    }
+    #player.jk48 .jk48-coin-slot {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      font-family: var(--jk48-sign);
+      font-size: 10.5px;
+      line-height: 1;
+    }
+    #player.jk48 .jk48-coin-slot i {
+      display: block;
+      width: 22px;
+      height: 6px;
+      border-radius: 3px;
+      background: #0d0705;
+      box-shadow: 0 0 0 2px #77715f, 0 0 0 3px rgba(36, 20, 11, 0.8), inset 0 1px 2px #000;
+    }
+    #player.jk48 .jk48-coin-words {
+      flex: 1 1 auto;
+      min-width: 0;
+      text-align: center;
+      font-family: var(--jk48-sign);
+      font-size: 9.5px;
+      line-height: 12px;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    #player.jk48 .jk48-coin-words b {
+      display: block;
+      font-weight: normal;
+    }
+    #player.jk48 .jk48-coin-words em {
+      display: none;
+      font-style: normal;
     }
 
     /* paused jukeboxes glow a little dimmer */
@@ -1563,7 +2110,7 @@
       position: absolute;
       inset: 0;
       z-index: 1;
-      background: rgba(40, 10, 0, 0.3);
+      background: rgba(40, 12, 0, 0.36);
       opacity: 0;
       transition: opacity 0.6s ease;
       pointer-events: none;
@@ -1572,69 +2119,180 @@
       opacity: 1;
     }
 
-    /* narrower pages: program moves under the dome and the keys */
+    /* a little narrower: smaller keys */
     @container (max-width: 950px) {
-      #player.jk48 .jk48-body {
-        grid-template-columns: 232px minmax(0, 1fr);
-        grid-template-areas: "dome center" "program program";
+      #player.jk48 .jk48-key { width: 52px; }
+      #player.jk48 .jk48-key-play { width: 56px; }
+      #player.jk48 .jk48-key .jk48-caption { font-size: 9.5px; letter-spacing: 0.03em; }
+      #player.jk48 .jk48-keys { gap: 4px; }
+      #player.jk48 .jk48-controls { gap: 6px; padding: 6px 8px 6px 9px; }
+      #player.jk48 .jk48-wing-info { padding-left: 8px; }
+      #player.jk48 .jk48-wing-info .jk48-panel { padding: 10px 16px 9px 8px; }
+      #player.jk48 .jk48-wing-program { padding-right: 8px; }
+      #player.jk48 .jk48-wing-program .jk48-panel { padding: 8px 8px 9px 16px; }
+      #player.jk48 .jk48-coin { gap: 7px; padding: 3px 10px; }
+      #player.jk48 .jk48-coin-words { letter-spacing: 0.06em; }
+    }
+
+    /* medium pages: the crown and the now-playing wing side by side, the program underneath */
+    @container (max-width: 879px) {
+      #player.jk48 .jk48-cabinet {
+        display: grid;
+        grid-template-columns: 304px minmax(0, 1fr);
+        grid-template-areas: "crown info" "program program";
+        align-items: end;
       }
+      #player.jk48 .jk48-crown { grid-area: crown; }
+      #player.jk48 .jk48-wing-info {
+        grid-area: info;
+        height: auto;
+        min-height: 276px;
+        margin: 0 0 0 -10px;
+        padding: 10px 10px 0 0;
+        border-radius: 8px 48px 8px 8px;
+        background:
+          repeating-conic-gradient(from 0deg at 0 100%, rgba(110, 36, 6, 0.28) 0deg 2deg, transparent 2deg 8deg) 100% 0 / 48px 48px no-repeat,
+          repeating-linear-gradient(90deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 0 0 / calc(100% - 48px) 10px no-repeat,
+          repeating-linear-gradient(180deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 100% 48px / 10px 100% no-repeat,
+          radial-gradient(ellipse 30px 120px at 100% 70%, rgba(255, 236, 168, 0.75), transparent),
+        radial-gradient(ellipse 120px 26px at 70% 0, rgba(255, 236, 168, 0.6), transparent),
+          linear-gradient(180deg, #f2c35e, #e58d3a 45%, #c24e2c);
+      }
+      #player.jk48 .jk48-wing-info .jk48-panel {
+        padding: 10px 10px 9px 20px;
+        border-radius: 6px 38px 6px 6px;
+      }
+      #player.jk48 .jk48-wing-info .jk48-marquee { border-radius: 6px 28px 6px 6px; }
+      #player.jk48 .jk48-wing-info .jk48-marquee-glass { border-radius: 4px 25px 4px 4px; padding: 0 10px 0 0; }
+      #player.jk48 .jk48-wing-program {
+        grid-area: program;
+        height: auto;
+        margin: -2px 0 0;
+        padding: 0 10px 10px;
+        border-radius: 6px 6px 16px 16px;
+        background:
+          repeating-linear-gradient(180deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 0 0 / 10px 100% no-repeat,
+          repeating-linear-gradient(180deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 100% 0 / 10px 100% no-repeat,
+          repeating-linear-gradient(90deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 0 100% / 100% 10px no-repeat,
+          linear-gradient(180deg, #e58d3a, #c24e2c);
+      }
+      #player.jk48 .jk48-wing-program .jk48-panel {
+        padding: 10px 12px;
+        border-radius: 4px 4px 8px 8px;
+      }
+      #player.jk48 .jk48-program-head { margin: 0; }
       #player.jk48 .jk48-program-list {
         height: auto;
-        max-height: 128px;
+        max-height: 124px;
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        background: linear-gradient(180deg, #2a170c, #3a2112);
       }
+      /* the wing is wide again here, so the keys get their full size back */
+      #player.jk48 .jk48-key { width: 64px; }
+      #player.jk48 .jk48-key-play { width: 68px; }
+      #player.jk48 .jk48-key .jk48-caption { font-size: 10.5px; letter-spacing: 0.06em; }
+      #player.jk48 .jk48-keys { gap: 7px; }
+      #player.jk48 .jk48-controls { gap: 8px; padding: 6px 10px 6px 12px; }
+      #player.jk48 .jk48-film { --jk48-vh: 330px; }
+      #player.jk48 .jk48-crown .jk48-film { --jk48-vx: 50cqw; --jk48-vy: 262px; }
+      #player.jk48 .jk48-wing-info .jk48-film { --jk48-vx: calc(50cqw - 294px); --jk48-vy: 220px; }
+      #player.jk48 .jk48-wing-program .jk48-film { --jk48-vx: 50cqw; --jk48-vy: -54px; }
+      #player.jk48 .jk48-coin { justify-content: center; gap: 12px; }
+      #player.jk48 .jk48-coin-words { flex: 0 1 auto; }
+      #player.jk48 .jk48-coin-words b { display: inline; }
+      #player.jk48 .jk48-coin-words em { display: inline; }
     }
-    @container (max-width: 720px) {
-      #player.jk48 .jk48-cabinet {
-        gap: 6px;
-        padding: 8px;
-      }
-      #player.jk48 .jk48-pilaster {
-        flex-basis: 18px;
-      }
-      #player.jk48 .jk48-tube {
-        width: 8px;
-        margin-left: -4px;
-      }
-      #player.jk48 .jk48-body {
-        grid-template-columns: minmax(0, 1fr);
-        grid-template-areas: "dome" "center" "program";
-      }
-      #player.jk48 .jk48-dome {
-        justify-self: center;
-      }
+    /* small pages: everything stacks under the crown, and the keys wrap under the knob when they must */
+    @container (max-width: 679px) {
       #player.jk48 .jk48-controls {
         flex-wrap: wrap;
         justify-content: center;
+        row-gap: 10px;
       }
+      #player.jk48 .jk48-cabinet {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas: "crown" "info" "program";
+      }
+      #player.jk48 .jk48-crown {
+        justify-self: center;
+        margin-bottom: -16px;
+      }
+      #player.jk48 .jk48-wing-info {
+        height: auto;
+        min-height: 0;
+        margin: 0;
+        padding: 10px 10px 0;
+        border-radius: 34px 34px 6px 6px;
+        background:
+          repeating-linear-gradient(90deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 0 0 / 100% 10px no-repeat,
+          repeating-linear-gradient(180deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 0 0 / 10px 100% no-repeat,
+          repeating-linear-gradient(180deg, rgba(110, 36, 6, 0.28) 0 1.6px, transparent 1.6px 7.4px) 100% 0 / 10px 100% no-repeat,
+          linear-gradient(180deg, #f2c35e, #e58d3a 45%, #c24e2c);
+      }
+      #player.jk48 .jk48-wing-info .jk48-panel {
+        padding: 22px 10px 10px;
+        border-radius: 24px 24px 4px 4px;
+      }
+      #player.jk48 .jk48-wing-info .jk48-marquee { border-radius: 6px; }
+      #player.jk48 .jk48-wing-info .jk48-marquee-glass { border-radius: 4px; padding: 0; }
+      #player.jk48 .jk48-wing-program { margin-top: -2px; }
+      #player.jk48 .jk48-film { --jk48-vw: 64cqw; --jk48-vh: 560px; }
+      #player.jk48 .jk48-crown .jk48-film { --jk48-vx: 152px; --jk48-vy: 432px; }
+      #player.jk48 .jk48-wing-info .jk48-film { --jk48-vx: 50cqw; --jk48-vy: 130px; }
+      #player.jk48 .jk48-wing-program .jk48-film { --jk48-vx: 50cqw; --jk48-vy: -152px; }
       #player.jk48 .jk48-program-list {
         grid-template-columns: minmax(0, 1fr);
+        max-height: 186px;
       }
     }
-    @container (max-width: 360px) {
-      #player.jk48 .jk48-key {
-        width: 54px;
-      }
-      #player.jk48 .jk48-key-play {
-        width: 60px;
-      }
-      #player.jk48 .jk48-keys {
-        gap: 6px;
-      }
+    /* the coin plate's words go under the slots */
+    @container (max-width: 460px) {
+      #player.jk48 .jk48-coin { flex-wrap: wrap; height: auto; padding: 5px 10px; row-gap: 4px; }
+      #player.jk48 .jk48-coin-words { flex: 1 1 100%; }
+    }
+    @container (max-width: 380px) {
+      #player.jk48 .jk48-wing-info .jk48-panel { padding: 22px 8px 9px; }
+      #player.jk48 .jk48-wing-program .jk48-panel { padding: 10px 8px; }
+      #player.jk48 .jk48-strip-foot { padding: 2px 5px 0; gap: 6px; }
+      #player.jk48 .jk48-key { width: 56px; }
+      #player.jk48 .jk48-key-play { width: 60px; }
+    }
+    @container (max-width: 330px) {
+      #player.jk48 .jk48-crown { zoom: 0.9; }
+      #player.jk48 .jk48-wing-info, #player.jk48 .jk48-wing-program { padding-left: 6px; padding-right: 6px; }
+      #player.jk48 #title { font-size: 16px; line-height: 19px; }
     }
 
-    @container (max-width: 300px) {
-      #player.jk48 .jk48-pilaster {
+    /* Windows high contrast: drop the photograph look and every texture, keep the dial, knob and
+       current pick visible, and leave the record window drawn as a picture so the record still shows */
+    @media (forced-colors: active) {
+      #player.jk48 {
+        filter: none;
+      }
+      #player.jk48 :not(.jk48-dome-inner, .jk48-dome-inner *),
+      #player.jk48 :not(.jk48-dome-inner, .jk48-dome-inner *)::before,
+      #player.jk48 :not(.jk48-dome-inner, .jk48-dome-inner *)::after {
+        background-image: none !important;
+      }
+      #player.jk48 .jk48-dome-inner {
+        forced-color-adjust: none;
+      }
+      #player.jk48 .jk48-key .jk48-caption {
+        -webkit-mask: none;
+        mask: none;
+      }
+      #player.jk48 .jk48-film,
+      #player.jk48 .jk48-glass,
+      #player.jk48 .jk48-shade,
+      #player.jk48 .jk48-bubbles {
         display: none;
       }
-    }
-
-    /* Windows high contrast: keep the dial, knob and current pick visible */
-    @media (forced-colors: active) {
       #player.jk48 .jk48-dial,
       #player.jk48 .jk48-knob,
-      #player.jk48 .jk48-small {
+      #player.jk48 .jk48-small,
+      #player.jk48 .jk48-key,
+      #player.jk48 .jk48-time {
         border: 1px solid ButtonText;
       }
       #player.jk48 .jk48-needle,
@@ -1646,19 +2304,32 @@
         outline: 2px solid Highlight;
         outline-offset: -2px;
       }
+      #player.jk48 .jk48-dome {
+        border: 2px solid CanvasText;
+      }
+      #player.jk48 :focus-visible {
+        outline: 3px solid Highlight;
+      }
+      #player.jk48 .jk48-controls :focus-visible::after {
+        display: none;
+      }
     }
 
     @media (prefers-reduced-motion: reduce) {
-      #player.jk48 .jk48-pilaster,
-      #player.jk48 .jk48-tube i,
+      #player.jk48 .jk48-crown::before,
+      #player.jk48 .jk48-wing::before,
       #player.jk48 .jk48-record,
       #player.jk48.is-swapping .jk48-slot {
         animation: none;
       }
-      #player.jk48 .jk48-tube i {
-        display: none;
+      /* the bubbles hold still where they are */
+      #player.jk48 .jk48-bubbles i {
+        animation-play-state: paused;
       }
-      #player.jk48 .jk48-arm {
+      #player.jk48 .jk48-arm,
+      #player.jk48 .jk48-shade,
+      #player.jk48 .jk48-marquee-glass::after,
+      #player.jk48 .jk48-key-play::before {
         transition: none;
       }
     }
@@ -1666,16 +2337,17 @@
     @keyframes jk48-spin {
       to { transform: rotate(360deg); }
     }
-    @keyframes jk48-glow {
-      0% { filter: hue-rotate(0deg) brightness(1); }
-      50% { filter: hue-rotate(28deg) brightness(1.08); }
-      100% { filter: hue-rotate(70deg) brightness(0.96); }
+    @keyframes jk48-cycle {
+      0%, 20% { opacity: 0; }
+      80%, 100% { opacity: 0.85; }
     }
+    /* up the side of the tube, then round the arch to the keystone */
     @keyframes jk48-bubble {
-      0% { top: 100%; opacity: 0; }
-      10% { opacity: 1; }
-      90% { opacity: 1; }
-      100% { top: -6%; opacity: 0; }
+      0% { transform: rotate(-90deg) translateY(-134px) translateX(-170px); opacity: 0; }
+      5% { opacity: 1; }
+      47% { transform: rotate(-90deg) translateY(-134px) translateX(0); }
+      94% { opacity: 1; }
+      100% { transform: rotate(-7deg) translateY(-134px) translateX(0); opacity: 0; }
     }
     @keyframes jk48-swap {
       0% { transform: translateY(0) scale(1); opacity: 1; }
@@ -1695,43 +2367,14 @@
     player.setAttribute("aria-label", "Jukebox music player");
     player.innerHTML = `
       <div class="jk48-cabinet">
-        <div class="jk48-pilaster jk48-left" aria-hidden="true"><div class="jk48-tube">${bubbles()}</div><span class="jk48-shade"></span></div>
-        <div class="jk48-body">
-          <div class="jk48-dome" aria-hidden="true">
-            <div class="jk48-dome-inner">
-              <div class="jk48-platter"></div>
-              <div class="jk48-slot">
-                <div class="jk48-record">
-                  <div class="jk48-label" id="jk48-label">
-                    <div class="jk48-label-print">
-                      <div class="jk48-label-top">
-                        <span class="jk48-label-rpm">78 R.P.M.</span>
-                        <span class="jk48-label-title" id="jk48-label-title"></span>
-                      </div>
-                      <span class="jk48-label-hole"></span>
-                      <span class="jk48-label-artist" id="jk48-label-artist"></span>
-                    </div>
-                    <img id="cover" alt="" hidden>
-                  </div>
-                </div>
-              </div>
-              <div class="jk48-sheen"></div>
-              <div class="jk48-spindle"></div>
-              <div class="jk48-arm">
-                <div class="jk48-arm-rod"></div>
-                <div class="jk48-arm-head"></div>
-                <div class="jk48-arm-base"></div>
-              </div>
-              <div class="jk48-glass"></div>
-            </div>
-          </div>
-
-          <div class="jk48-center">
+        <div class="jk48-wing jk48-wing-info">
+          <span class="jk48-shade" aria-hidden="true"></span>
+          <div class="jk48-panel jk48-center">
             <div class="jk48-marquee">
               <div class="jk48-marquee-glass">
-                <span class="jk48-star" aria-hidden="true">&#9733;</span>
+                <span class="jk48-swash" aria-hidden="true"></span>
                 <span id="jk48-status" role="status">PAUSED</span>
-                <span class="jk48-star" aria-hidden="true">&#9733;</span>
+                <span class="jk48-swash jk48-swash-r" aria-hidden="true"></span>
               </div>
             </div>
             <div class="jk48-strip">
@@ -1749,6 +2392,7 @@
               <div class="jk48-dial" id="progress-bar" role="slider" tabindex="0" aria-label="Song position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                 <div class="jk48-dial-face">
                   <div class="jk48-dial-fill"></div>
+                  <div class="jk48-dial-nums" aria-hidden="true"><i>2</i><i>4</i><i>6</i><i>8</i></div>
                   <div class="jk48-needle"></div>
                 </div>
               </div>
@@ -1756,29 +2400,79 @@
             </div>
             <div class="jk48-controls" id="controls">
               <div class="jk48-volume">
-                <button type="button" class="jk48-small" id="volumeDownButton" aria-label="Volume down" title="Softer">&minus;</button>
                 <div class="jk48-volume-stack">
+                  <span class="jk48-knob-scale" aria-hidden="true"></span>
                   <div class="jk48-knob" id="jk48-knob" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="20" aria-valuenow="${currentVolume}">
                     <div class="jk48-knob-pointer"></div>
                   </div>
                   <span class="jk48-caption">VOLUME</span>
                 </div>
-                <button type="button" class="jk48-small" id="volumeUpButton" aria-label="Volume up" title="Louder">+</button>
+                <div class="jk48-volume-steps">
+                  <button type="button" class="jk48-small" id="volumeUpButton" aria-label="Volume up" title="Louder">+</button>
+                  <button type="button" class="jk48-small" id="volumeDownButton" aria-label="Volume down" title="Softer">&minus;</button>
+                </div>
               </div>
               <div class="jk48-keys">
-                <button type="button" class="jk48-key" id="prevButton" aria-label="Back (previous record)" title="Previous record">${icon("prev")}<span class="jk48-caption">BACK</span></button>
-                <button type="button" class="jk48-key jk48-key-play" id="playPauseButton" aria-label="Play" title="Play">${icon("play")}${icon("pause")}<span class="jk48-caption">PLAY</span></button>
-                <button type="button" class="jk48-key" id="nextButton" aria-label="Reject (next record)" title="Reject: skip to the next record">${icon("next")}<span class="jk48-caption">REJECT</span></button>
+                <button type="button" class="jk48-key" id="prevButton" aria-label="Back (previous record)" title="Previous record"><span class="jk48-caption">BACK</span></button>
+                <button type="button" class="jk48-key jk48-key-play" id="playPauseButton" aria-label="Play" title="Play"><span class="jk48-caption">PLAY</span></button>
+                <button type="button" class="jk48-key" id="nextButton" aria-label="Reject (next record)" title="Reject: skip to the next record"><span class="jk48-caption">REJECT</span></button>
               </div>
             </div>
           </div>
-
-          <div class="jk48-program">
-            <div class="jk48-program-head" id="jk48-program-head">SELECTIONS</div>
-            <ol class="jk48-program-list" id="jk48-program" aria-labelledby="jk48-program-head"></ol>
-          </div>
+          <span class="jk48-film" aria-hidden="true"></span>
         </div>
-        <div class="jk48-pilaster jk48-right" aria-hidden="true"><div class="jk48-tube">${bubbles()}</div><span class="jk48-shade"></span></div>
+
+        <div class="jk48-crown" aria-hidden="true">
+          <span class="jk48-shade"></span>
+          <span class="jk48-tube"></span>
+          ${bubbles()}
+          <span class="jk48-tube-wall"></span>
+          <span class="jk48-keystone">&#9733;</span>
+          <div class="jk48-dome">
+            <div class="jk48-dome-inner">
+              <div class="jk48-platter"></div>
+              <div class="jk48-slot">
+                <div class="jk48-record">
+                  <div class="jk48-label" id="jk48-label">
+                    <div class="jk48-label-print">
+                      <div class="jk48-label-top">
+                        <span class="jk48-label-rpm">78 R.P.M.</span>
+                        <span class="jk48-label-title" id="jk48-label-title"></span>
+                      </div>
+                      <span class="jk48-label-hole"></span>
+                      <span class="jk48-label-artist" id="jk48-label-artist"></span>
+                    </div>
+                    <img id="cover" alt="" hidden>
+                  </div>
+                </div>
+              </div>
+              <div class="jk48-spindle"></div>
+              <div class="jk48-arm">
+                <div class="jk48-arm-rod"></div>
+                <div class="jk48-arm-head"></div>
+                <div class="jk48-arm-base"></div>
+              </div>
+              <div class="jk48-glass"></div>
+            </div>
+          </div>
+          <div class="jk48-nameplate"><span>Automatic Phonograph</span></div>
+          <span class="jk48-film"></span>
+        </div>
+
+        <div class="jk48-wing jk48-wing-program">
+          <span class="jk48-shade" aria-hidden="true"></span>
+          <div class="jk48-panel jk48-program">
+            <div class="jk48-program-head" id="jk48-program-head">Selections</div>
+            <ol class="jk48-program-list" id="jk48-program" aria-labelledby="jk48-program-head"></ol>
+            <div class="jk48-coin" aria-hidden="true">
+              <span class="jk48-coin-slot">5&cent;<i></i></span>
+              <span class="jk48-coin-slot">10&cent;<i></i></span>
+              <span class="jk48-coin-slot">25&cent;<i></i></span>
+              <span class="jk48-coin-words"><b>INSERT COIN</b><em> &middot; </em><b>PUSH SELECTION</b></span>
+            </div>
+          </div>
+          <span class="jk48-film" aria-hidden="true"></span>
+        </div>
       </div>
     `;
     return player;

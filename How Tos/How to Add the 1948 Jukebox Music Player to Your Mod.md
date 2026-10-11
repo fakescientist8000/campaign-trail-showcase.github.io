@@ -1,6 +1,6 @@
 # How to Add the 1948 Jukebox Music Player to Your Mod
 
-The 1948 jukebox is a late-1940s take on the music player from the mod 1932. It sits under the game window and looks like the face of a jukebox from that era: a 78 r.p.m. record spinning under a glass dome, a typed title strip, a list of selections, Bakelite keys, a volume knob and bubble tubes on either side.
+The 1948 jukebox is a late-1940s take on the music player from the mod 1932. It sits under the game window and looks like the face of a jukebox from that era, worn in like an old photograph: a 78 r.p.m. record turning behind old glass under an arch of lit plastic and a bubble tube, typed title strips with numbered selector buttons, a coin plate, Bakelite keys and a volume knob.
 
 It uses the same `Song`, `Playlist` and `changePlaylist` code as the 1932 player, so playlists you've already written for that player will work with this one. It plays normal audio links and YouTube links. Everything is drawn with CSS, so there are no images to host.
 
@@ -43,12 +43,13 @@ The new playlist starts from its first song, and the list of selections updates 
 - **Volume:** the − and + buttons, or drag the knob up or down. Once you've clicked the knob (or tabbed to it), the mouse wheel and arrow keys turn it too. Scrolling past the knob never changes the volume. The volume is remembered between visits.
 - **Dial:** click or drag the dial under the title strip to move through the song. Once it's focused, the arrow keys move 5 seconds and Page Up/Page Down move 30 seconds.
 
-The sign above the title strip shows NOW PLAYING, PAUSED, WARMING UP while a song loads, or OUT OF ORDER if a song can't be played. Press PLAY to try that record again, or REJECT to move on.
+The hand-painted sign above the title strip reads Now playing, Paused, Warming up while a song loads, or Out of order if a song can't be played. Press PLAY to try that record again, or REJECT to move on.
 
 ## Notes
 
 - Only add one music player to a mod. If another player is already on the page, the jukebox won't add itself.
 - On narrow screens the selections move under the record and keys.
 - If a player has reduced motion turned on in their system settings, the record and bubble tubes stand still.
+- The two little counters either side of the dial show how far into the record you are and how long it is.
 - Keys the jukebox uses (arrows on the knob and dial, Enter on its buttons) don't also trigger the game's keyboard shortcuts.
 - For other code, `window.jukebox1948` has `play()`, `pause()`, `toggle()`, `next()`, `previous()`, `select(index)` (the first song is 0) and `setVolume(0-20)`.
