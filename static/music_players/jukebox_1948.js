@@ -800,8 +800,8 @@
     // fine film grain: most of it sits close to nothing, so it reads as the grain of a print, not speckle
     const grain = svgUrl(160, 160, filter("g",
       "<feTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2' seed='3' stitchTiles='stitch' result='n'/>" +
-      "<feColorMatrix in='n' result='d' values='0 0 0 0 .15  0 0 0 0 .08  0 0 0 0 .03  1.15 0 0 0 -.6'/>" +
-      "<feColorMatrix in='n' result='l' values='0 0 0 0 1  0 0 0 0 .94  0 0 0 0 .82  -1.15 0 0 0 .44'/>" +
+      "<feColorMatrix in='n' result='d' values='0 0 0 0 .15  0 0 0 0 .08  0 0 0 0 .03  .8 0 0 0 -.46'/>" +
+      "<feColorMatrix in='n' result='l' values='0 0 0 0 1  0 0 0 0 .94  0 0 0 0 .82  -.8 0 0 0 .3'/>" +
       "<feMerge><feMergeNode in='d'/><feMergeNode in='l'/></feMerge>") +
       "<rect width='160' height='160' filter='url(#g)'/>");
 
@@ -809,10 +809,10 @@
     let seed = 1948;
     const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     let specks = "";
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < 7; i++) {
       const dark = i % 3 === 0;
       specks += "<circle cx='" + (rand() * 400).toFixed(1) + "' cy='" + (rand() * 300).toFixed(1) + "' r='" + (0.35 + rand() * (dark ? 0.45 : 0.7)).toFixed(2) +
-        "' fill='" + (dark ? "#2a1405" : "#fff2d6") + "' opacity='" + (0.16 + rand() * 0.24).toFixed(2) + "'/>";
+        "' fill='" + (dark ? "#2a1405" : "#fff2d6") + "' opacity='" + (0.1 + rand() * 0.14).toFixed(2) + "'/>";
     }
     const dust = svgUrl(400, 300, specks);
 
@@ -827,7 +827,7 @@
       "<feTurbulence type='fractalNoise' baseFrequency='.03' stitchTiles='stitch' numOctaves='3' seed='7' result='a'/>" +
       "<feColorMatrix in='a' result='s' values='0 0 0 0 .5  0 0 0 0 .32  0 0 0 0 .1  1.6 0 0 0 -.84'/>" +
       "<feTurbulence type='fractalNoise' baseFrequency='.22' stitchTiles='stitch' numOctaves='2' seed='12' result='b'/>" +
-      "<feColorMatrix in='b' result='p' values='0 0 0 0 .45  0 0 0 0 .26  0 0 0 0 .08  4 0 0 0 -2.72'/>" +
+      "<feColorMatrix in='b' result='p' values='0 0 0 0 .45  0 0 0 0 .26  0 0 0 0 .08  3 0 0 0 -2.3'/>" +
       "<feMerge><feMergeNode in='s'/><feMergeNode in='p'/></feMerge>") +
       "<rect width='240' height='120' filter='url(#f)'/>");
 
@@ -836,7 +836,7 @@
       "<feTurbulence type='fractalNoise' baseFrequency='.06 .1' stitchTiles='stitch' numOctaves='3' seed='21' result='a'/>" +
       "<feColorMatrix in='a' result='s' values='0 0 0 0 .22  0 0 0 0 .18  0 0 0 0 .1  1.3 0 0 0 -.64'/>" +
       "<feTurbulence type='fractalNoise' baseFrequency='.7' stitchTiles='stitch' numOctaves='1' seed='4' result='b'/>" +
-      "<feColorMatrix in='b' result='p' values='0 0 0 0 .16  0 0 0 0 .12  0 0 0 0 .06  2.4 0 0 0 -1.42'/>" +
+      "<feColorMatrix in='b' result='p' values='0 0 0 0 .16  0 0 0 0 .12  0 0 0 0 .06  1.8 0 0 0 -1.24'/>" +
       "<feMerge><feMergeNode in='s'/><feMergeNode in='p'/></feMerge>") +
       "<rect width='240' height='160' filter='url(#t)'/>");
 
