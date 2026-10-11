@@ -26,6 +26,11 @@
   // a real 78 turns once every 60/78 seconds
   const SECONDS_PER_TURN = 60 / 78;
 
+  // tone arm angles: resting off the record, at the outer groove, and the sweep in to the run-out
+  const ARM_REST = -15;
+  const ARM_START = -6.1;
+  const ARM_SWEEP = 20.4;
+
   // if another music player is already on the page, leave it alone
   const existingPlayer = document.getElementById("player");
   if (existingPlayer) {
@@ -135,6 +140,8 @@
     const tag = document.createElement("script");
     tag.id = "yt-iframe-api";
     tag.src = "https://www.youtube.com/iframe_api";
+    // if it fails, take the tag away so a later try can fetch it again
+    tag.onerror = () => tag.remove();
     document.head.appendChild(tag);
   }
 
@@ -241,8 +248,12 @@
       isPlaying = false;
       advanceToNextSong();
       return;
+    } else if (e.data === S.PAUSED) {
+      buffering = false;
+      isPlaying = false;
+      wantPlaying = false;
     } else {
-      // paused, cued or unstarted
+      // cued or unstarted
       buffering = false;
       isPlaying = false;
     }
@@ -298,11 +309,8 @@
     if (isYouTubeSong(song)) {
       clearAudio(audio);
       yt.loadedId = null;
-      if (yt.failed) {
-        hasError = true;
-        wantPlaying = false;
-        return;
-      }
+      // a slow connection may have timed out before; try loading YouTube again
+      yt.failed = false;
       ensureYTPlayer();
       syncYouTube();
       return;
@@ -435,7 +443,7 @@
     if (hasError) return "OUT OF ORDER";
     if (isPlaying && buffering) return "WARMING UP";
     if (isPlaying) return "NOW PLAYING";
-    if (wantPlaying && ytActive() && !yt.ready) return "WARMING UP";
+    if (wantPlaying) return "WARMING UP";
     return "PAUSED";
   }
 
@@ -447,8 +455,10 @@
     player.classList.toggle("is-playing", isPlaying);
     player.classList.toggle("is-error", hasError);
     updatePlayPauseIcon(showPlaying);
+    // only write real changes, so screen readers hear each state once
     const status = el("jk48-status");
-    if (status) status.textContent = statusText();
+    const text = statusText();
+    if (status && status.textContent !== text) status.textContent = text;
   }
 
   function paintProgress(current, duration) {
@@ -464,7 +474,7 @@
     if (!player || !dial) return;
     player.style.setProperty("--jk48-progress", (ratio * 100).toFixed(2) + "%");
     // the tone arm walks in from the outer groove as the record plays
-    player.style.setProperty("--jk48-arm-play", (ratio * 17).toFixed(2) + "deg");
+    player.style.setProperty("--jk48-arm-play", (ARM_START + ratio * ARM_SWEEP).toFixed(2) + "deg");
     const elapsed = el("jk48-elapsed");
     const total = el("jk48-duration");
     const hasDuration = Number.isFinite(duration) && duration > 0;
@@ -585,8 +595,9 @@
     const song = playlist.getCurrentSong();
     const index = playlist.currentSongIndex || 0;
 
-    if (playlist !== renderedPlaylist || playlist.songs.length !== renderedCount) renderProgram(playlist);
-    highlightProgram(playlist);
+    // the program always lists the playlist its buttons play from
+    if (activePlaylist !== renderedPlaylist || activePlaylist.songs.length !== renderedCount) renderProgram(activePlaylist);
+    highlightProgram(activePlaylist);
 
     const title = player.querySelector("#title");
     const artist = player.querySelector("#artist");
@@ -599,6 +610,7 @@
       if (artist) artist.textContent = "Out of Order";
       if (selection) selection.textContent = "SELECTION —";
       if (nextUp) nextUp.textContent = "";
+      cancelSwap(player);
       paintLabel(null, 0);
       shownSong = null;
       render();
@@ -625,10 +637,18 @@
         swapTimer = setTimeout(() => player.classList.remove("is-swapping"), 320);
       }, 280);
     } else if (shownSong !== song) {
+      cancelSwap(player);
       paintLabel(song, index);
     }
     shownSong = song;
     render();
+  }
+
+  // stop a record change part-way, so its timer can't repaint an old label later
+  function cancelSwap(player) {
+    clearTimeout(swapTimer);
+    swapTimer = null;
+    player.classList.remove("is-swapping");
   }
 
   function playSongAtIndex() {
@@ -702,8 +722,12 @@
       toggle: togglePlayPause,
       next: advanceToNextSong,
       previous: playPreviousSong,
+      // index starts at 0
       select: (index) => {
-        activePlaylist.currentSongIndex = index;
+        const count = activePlaylist.songs.length;
+        const i = Math.trunc(Number(index));
+        if (!count || !Number.isFinite(i)) return;
+        activePlaylist.currentSongIndex = ((i % count) + count) % count;
         playSongAtIndex();
       },
       setVolume: setVolumeLevel,
@@ -753,8 +777,8 @@
       --jk48-deco: "Limelight", "Copperplate", "Copperplate Gothic Light", Georgia, serif;
       --jk48-type: "Special Elite", "Courier New", Courier, monospace;
       --jk48-progress: 0%;
-      --jk48-arm-rest: -9deg;
-      --jk48-arm-play: 0deg;
+      --jk48-arm-rest: ${ARM_REST}deg;
+      --jk48-arm-play: ${ARM_START}deg;
       --jk48-knob: -54deg;
       --jk48-turn: ${SECONDS_PER_TURN.toFixed(4)}s;
       container-type: inline-size;
@@ -793,6 +817,9 @@
     #player.jk48 [role="slider"]:focus-visible {
       outline: 2px solid #ffd27a;
       outline-offset: 2px;
+    }
+    #player.jk48 .jk48-controls :focus-visible {
+      outline-color: #2a1206;
     }
 
     /* cabinet */
@@ -957,17 +984,24 @@
     #player.jk48 .jk48-label-print {
       position: absolute;
       inset: 6px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
-      padding: 3px 4px 6px;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) 12px minmax(0, 1fr);
+      justify-items: center;
+      padding: 4px;
       text-align: center;
       font-family: Georgia, "Times New Roman", serif;
       font-size: 6.5px;
       line-height: 1.1;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+    }
+    #player.jk48 .jk48-label-top {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 1px;
+      min-height: 0;
     }
     #player.jk48 .jk48-label-rpm {
       font-size: 5px;
@@ -979,17 +1013,17 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
+      overflow-wrap: anywhere;
       max-width: 52px;
       font-weight: bold;
-    }
-    #player.jk48 .jk48-label-hole {
-      flex: 0 0 10px;
     }
     #player.jk48 .jk48-label-artist {
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
+      align-self: start;
       overflow: hidden;
+      overflow-wrap: anywhere;
       max-width: 50px;
       font-style: italic;
       text-transform: none;
@@ -1033,8 +1067,8 @@
     }
     #player.jk48 .jk48-arm {
       position: absolute;
-      left: 196px;
-      top: 24px;
+      left: 178px;
+      top: 44px;
       width: 0;
       height: 0;
       transform: rotate(var(--jk48-arm-rest));
@@ -1145,9 +1179,9 @@
     #player.jk48.is-error .jk48-marquee-glass {
       color: #fff3d6;
       background:
-        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.1) 0 1px, transparent 1px 6px),
-        radial-gradient(ellipse at center, #e0464a 0%, #9c1520 70%, #5a070d 100%);
-      text-shadow: 0 0 6px rgba(255, 120, 120, 0.9);
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 6px),
+        radial-gradient(ellipse at center, #b3141f 0%, #7d0d16 70%, #4a050b 100%);
+      text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
       filter: none;
     }
     #player.jk48 .jk48-strip {
@@ -1178,7 +1212,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 50px;
+      min-height: 50px;
       padding: 4px 12px;
     }
     #player.jk48 #title {
@@ -1196,7 +1230,7 @@
       overflow-wrap: anywhere;
     }
     #player.jk48 .jk48-strip-band {
-      height: 22px;
+      min-height: 22px;
       padding: 0 10px;
       display: flex;
       align-items: center;
@@ -1255,7 +1289,7 @@
       background: var(--jk48-chrome);
       box-shadow: 0 0 0 2px #2a1206;
       cursor: pointer;
-      touch-action: none;
+      touch-action: pan-y;
     }
     #player.jk48 .jk48-dial-face {
       position: relative;
@@ -1525,12 +1559,21 @@
     }
 
     /* paused jukeboxes glow a little dimmer */
-    #player.jk48:not(.is-playing) .jk48-pilaster {
-      filter: brightness(0.78) saturate(0.85);
+    #player.jk48 .jk48-shade {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background: rgba(40, 10, 0, 0.3);
+      opacity: 0;
+      transition: opacity 0.6s ease;
+      pointer-events: none;
+    }
+    #player.jk48:not(.is-playing) .jk48-shade {
+      opacity: 1;
     }
 
     /* narrower pages: program moves under the dome and the keys */
-    @container (max-width: 860px) {
+    @container (max-width: 950px) {
       #player.jk48 .jk48-body {
         grid-template-columns: 232px minmax(0, 1fr);
         grid-template-areas: "dome center" "program program";
@@ -1542,7 +1585,7 @@
         grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
       }
     }
-    @container (max-width: 600px) {
+    @container (max-width: 720px) {
       #player.jk48 .jk48-cabinet {
         gap: 6px;
         padding: 8px;
@@ -1578,6 +1621,30 @@
       }
       #player.jk48 .jk48-keys {
         gap: 6px;
+      }
+    }
+
+    @container (max-width: 300px) {
+      #player.jk48 .jk48-pilaster {
+        display: none;
+      }
+    }
+
+    /* Windows high contrast: keep the dial, knob and current pick visible */
+    @media (forced-colors: active) {
+      #player.jk48 .jk48-dial,
+      #player.jk48 .jk48-knob,
+      #player.jk48 .jk48-small {
+        border: 1px solid ButtonText;
+      }
+      #player.jk48 .jk48-needle,
+      #player.jk48 .jk48-knob-pointer::after {
+        forced-color-adjust: none;
+        background: Highlight;
+      }
+      #player.jk48 .jk48-pick.is-current {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
       }
     }
 
@@ -1628,7 +1695,7 @@
     player.setAttribute("aria-label", "Jukebox music player");
     player.innerHTML = `
       <div class="jk48-cabinet">
-        <div class="jk48-pilaster jk48-left" aria-hidden="true"><div class="jk48-tube">${bubbles()}</div></div>
+        <div class="jk48-pilaster jk48-left" aria-hidden="true"><div class="jk48-tube">${bubbles()}</div><span class="jk48-shade"></span></div>
         <div class="jk48-body">
           <div class="jk48-dome" aria-hidden="true">
             <div class="jk48-dome-inner">
@@ -1637,8 +1704,10 @@
                 <div class="jk48-record">
                   <div class="jk48-label" id="jk48-label">
                     <div class="jk48-label-print">
-                      <span class="jk48-label-rpm">78 R.P.M.</span>
-                      <span class="jk48-label-title" id="jk48-label-title"></span>
+                      <div class="jk48-label-top">
+                        <span class="jk48-label-rpm">78 R.P.M.</span>
+                        <span class="jk48-label-title" id="jk48-label-title"></span>
+                      </div>
                       <span class="jk48-label-hole"></span>
                       <span class="jk48-label-artist" id="jk48-label-artist"></span>
                     </div>
@@ -1661,7 +1730,7 @@
             <div class="jk48-marquee">
               <div class="jk48-marquee-glass">
                 <span class="jk48-star" aria-hidden="true">&#9733;</span>
-                <span id="jk48-status">PAUSED</span>
+                <span id="jk48-status" role="status">PAUSED</span>
                 <span class="jk48-star" aria-hidden="true">&#9733;</span>
               </div>
             </div>
@@ -1697,9 +1766,9 @@
                 <button type="button" class="jk48-small" id="volumeUpButton" aria-label="Volume up" title="Louder">+</button>
               </div>
               <div class="jk48-keys">
-                <button type="button" class="jk48-key" id="prevButton" aria-label="Previous record" title="Previous record">${icon("prev")}<span class="jk48-caption">BACK</span></button>
+                <button type="button" class="jk48-key" id="prevButton" aria-label="Back (previous record)" title="Previous record">${icon("prev")}<span class="jk48-caption">BACK</span></button>
                 <button type="button" class="jk48-key jk48-key-play" id="playPauseButton" aria-label="Play" title="Play">${icon("play")}${icon("pause")}<span class="jk48-caption">PLAY</span></button>
-                <button type="button" class="jk48-key" id="nextButton" aria-label="Next record" title="Reject: skip to the next record">${icon("next")}<span class="jk48-caption">REJECT</span></button>
+                <button type="button" class="jk48-key" id="nextButton" aria-label="Reject (next record)" title="Reject: skip to the next record">${icon("next")}<span class="jk48-caption">REJECT</span></button>
               </div>
             </div>
           </div>
@@ -1709,7 +1778,7 @@
             <ol class="jk48-program-list" id="jk48-program" aria-labelledby="jk48-program-head"></ol>
           </div>
         </div>
-        <div class="jk48-pilaster jk48-right" aria-hidden="true"><div class="jk48-tube">${bubbles()}</div></div>
+        <div class="jk48-pilaster jk48-right" aria-hidden="true"><div class="jk48-tube">${bubbles()}</div><span class="jk48-shade"></span></div>
       </div>
     `;
     return player;
@@ -1717,6 +1786,7 @@
 
   function wireDial(dial) {
     let dragging = false;
+    let dragSong = null;
 
     const ratioAt = (clientX) => {
       const rect = dial.getBoundingClientRect();
@@ -1734,6 +1804,7 @@
       const duration = backendGetDuration();
       if (!Number.isFinite(duration) || duration <= 0) return;
       dragging = true;
+      dragSong = currentSong();
       seeking = true;
       try { dial.setPointerCapture(e.pointerId); } catch (err) {}
       preview(ratioAt(e.clientX));
@@ -1749,9 +1820,11 @@
       if (!dragging) return;
       dragging = false;
       const duration = backendGetDuration();
-      if (commit && Number.isFinite(duration) && duration > 0) {
+      // if the record changed mid-drag, don't seek the new one
+      if (commit && currentSong() === dragSong && Number.isFinite(duration) && duration > 0) {
         backendSeekTo(ratioAt(e.clientX) * duration);
       }
+      dragSong = null;
       seeking = false;
       paintProgress(backendGetCurrentTime(), backendGetDuration());
     };
@@ -1794,10 +1867,26 @@
       setVolumeLevel(level);
     });
 
+    // the wheel turns the knob only once it's been clicked or tabbed to, so scrolling
+    // past it never changes the volume. One step per notch, or per 100px of trackpad.
+    let wheelTotal = 0;
+    let wheelAt = -Infinity;
     knob.addEventListener("wheel", (e) => {
+      if (document.activeElement !== knob) return;
+      const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 300 : e.deltaY;
+      if (!dy) return;
+      const step = dy < 0 ? 1 : -1;
+      if ((step > 0 && currentVolume >= 20) || (step < 0 && currentVolume <= 0)) return;
       e.preventDefault();
-      if (e.deltaY < 0) setVolumeLevel(currentVolume + 1);
-      else if (e.deltaY > 0) setVolumeLevel(currentVolume - 1);
+      if (e.timeStamp - wheelAt > 150) {
+        wheelTotal = 0;
+        setVolumeLevel(currentVolume + step);
+      } else {
+        wheelTotal += dy;
+        while (wheelTotal <= -100) { setVolumeLevel(currentVolume + 1); wheelTotal += 100; }
+        while (wheelTotal >= 100) { setVolumeLevel(currentVolume - 1); wheelTotal -= 100; }
+      }
+      wheelAt = e.timeStamp;
     }, { passive: false });
 
     // drag up to turn it up, down to turn it down
@@ -1847,6 +1936,16 @@
     const nextBtn = el("nextButton");
     const volumeUpBtn = el("volumeUpButton");
     const volumeDownBtn = el("volumeDownButton");
+
+    // keys the jukebox uses shouldn't also work the game's keyboard shortcuts
+    player.addEventListener("keydown", (e) => {
+      if (e.defaultPrevented || ((e.key === "Enter" || e.key === " ") && e.target.closest("button"))) e.stopPropagation();
+    });
+    // a mouse click shouldn't leave focus on a key, so Enter still answers the game's questions
+    player.addEventListener("click", (e) => {
+      const button = e.target.closest("button");
+      if (button && e.detail > 0) button.blur();
+    });
 
     playPauseBtn.addEventListener("click", () => {
       togglePlayPause();
@@ -1914,6 +2013,8 @@
     audio.addEventListener("pause", audioEvent(() => {
       isPlaying = false;
       buffering = false;
+      // something else paused the audio; the end of a song is handled by "ended"
+      if (!audio.ended) wantPlaying = false;
       render();
     }));
     audio.addEventListener("ended", audioEvent(() => {

@@ -40,7 +40,7 @@ The new playlist starts from its first song, and the list of selections updates 
 
 - **BACK / PLAY / REJECT:** previous record, play or pause, and skip to the next record. ("Reject" is what the skip button was called on real jukeboxes.)
 - **Selections:** click any record in the list to play it. Clicking the one that's already playing pauses or resumes it.
-- **Volume:** the − and + buttons, the mouse wheel over the knob, dragging the knob up or down, or the arrow keys once the knob is focused. The volume is remembered between visits.
+- **Volume:** the − and + buttons, or drag the knob up or down. Once you've clicked the knob (or tabbed to it), the mouse wheel and arrow keys turn it too. Scrolling past the knob never changes the volume. The volume is remembered between visits.
 - **Dial:** click or drag the dial under the title strip to move through the song. Once it's focused, the arrow keys move 5 seconds and Page Up/Page Down move 30 seconds.
 
 The sign above the title strip shows NOW PLAYING, PAUSED, WARMING UP while a song loads, or OUT OF ORDER if a song can't be played. Press PLAY to try that record again, or REJECT to move on.
@@ -50,4 +50,5 @@ The sign above the title strip shows NOW PLAYING, PAUSED, WARMING UP while a son
 - Only add one music player to a mod. If another player is already on the page, the jukebox won't add itself.
 - On narrow screens the selections move under the record and keys.
 - If a player has reduced motion turned on in their system settings, the record and bubble tubes stand still.
-- For other code, `window.jukebox1948` has `play()`, `pause()`, `toggle()`, `next()`, `previous()`, `select(index)` and `setVolume(0-20)`.
+- Keys the jukebox uses (arrows on the knob and dial, Enter on its buttons) don't also trigger the game's keyboard shortcuts.
+- For other code, `window.jukebox1948` has `play()`, `pause()`, `toggle()`, `next()`, `previous()`, `select(index)` (the first song is 0) and `setVolume(0-20)`.
